@@ -11,6 +11,4 @@ if __name__ == "__main__":
     port = 8000 # find_free_port()
     host = "localhost"
 
-    server = HTTPServer(("", port), Handler)
-    print("Server is starting...")
-    server.serve_forever()
+    start_server(host, port)
