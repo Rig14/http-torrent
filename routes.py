@@ -15,7 +15,7 @@ class Handler(BaseHTTPRequestHandler):
         headers: list[tuple[str, str]] = []
 
         # ROUTES
-        if parsed_url.path == "/":
+        if parsed_url.path == "/heartbeat":
             status = 200
             content = "Service is running".encode("UTF-8")
 
