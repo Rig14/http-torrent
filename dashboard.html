@@ -39,7 +39,7 @@
         };
 
         const init = async () => {
-            const nodeCount = 100
+            const nodeCount = 200
 
             const ports = Array.from({length: nodeCount}, (_, i) => 50000 + i);
 
@@ -60,7 +60,6 @@
                     scales: {
                         y: {
                             beginAtZero: true,
-                            max: nodeCount                  // Maximum height for y-axis values
                         }
                     }
                 }
