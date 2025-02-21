@@ -1,7 +1,7 @@
 from http.server import BaseHTTPRequestHandler
 import urllib.parse as urlparse
 
-from nodes import NodeManager, Node
+from nodes import NodeManager, Node, metrics
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -18,7 +18,7 @@ class Handler(BaseHTTPRequestHandler):
 
         content: bytes = "404 Not Found.".encode("UTF-8")
         status: int = 404
-        headers: list[tuple[str, str]] = []
+        headers: list[tuple[str, str]] = [("Access-Control-Allow-Origin", "*")]
 
         # ROUTES
         if path == "/addr":
@@ -35,6 +35,10 @@ class Handler(BaseHTTPRequestHandler):
             headers.append(("Content-Type", "application/json"))
             content = self._node_manager.get_known_nodes_as_json().encode("UTF-8")
 
+        if path == "/metrics":
+            status = 200
+            headers.append(("Content-Type", "application/json"))
+            content = metrics().encode("UTF-8")
 
         # SENDING
         self.send_response(status)

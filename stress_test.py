@@ -4,7 +4,7 @@ import signal
 import atexit
 import time
 
-NODE_COUNT = 200
+NODE_COUNT = 100
 
 # Start subprocesses in a new process group
 processes: list[subprocess.Popen] = []

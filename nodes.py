@@ -1,12 +1,9 @@
 import json
 import time
 import urllib.parse
-from collections import Counter
 from datetime import datetime
-from queue import PriorityQueue, Queue
 
 import requests
-from urllib3.exceptions import ProtocolError
 
 from util import ThreadSafeUniquePriorityQueue
 
@@ -88,23 +85,32 @@ class NodeManager:
         if self._nodes_to_check.is_empty(): return
         print("There is currently", self._nodes_to_check.size(), "nodes to check. Known nodes size is ", len(self._known_nodes))
 
+        # get one node from the queue
         node = self._nodes_to_check.dequeue()
         print(f"Checking node {node.host}:{node.port}")
 
+        # if node is NOT KNOWN then check it.
+        # if it IS KNOWN then check the node if it was not updated recently
+        if node in self._known_nodes:
+            if (datetime.now() - node.last_checked).total_seconds() < 10:
+                print(f"Node {node.host}:{node.port} was checked less than 10 seconds ago.")
+                self.add_node_to_check(node)
+                return
+
+        # request URL to check if node is reachable
         try:
-            # construct address request URL to check if node is reachable
             url = f"http://{node.host}:{node.port}/addr?"
             params = {"host": self._instance_node.host, "port": self._instance_node.port}
             response = requests.get(url + urllib.parse.urlencode(params))
             response.raise_for_status()
         except Exception:
-            print("Node at {node.host}:{node.port} is not reachable.")
+            print(f"Node at {node.host}:{node.port} is not reachable.")
             if node in self._known_nodes:
                 print("Removing node from known nodes.")
                 self._known_nodes.remove(node)
             return
 
-        # add requested node to known nodes and to be checked
+        # add successfully requested node to known nodes
         node.last_checked = datetime.now()
         try:
             self._known_nodes.remove(node)
@@ -117,6 +123,21 @@ class NodeManager:
         for known_node in known_nodes:
             if known_node == node: continue
             self.add_node_to_check(known_node)
+
+    def known_node_count(self) -> int:
+        return len(self._known_nodes)
+
+    def check_queue_size(self) -> int:
+        return self._nodes_to_check.size()
+
+def metrics() -> str:
+    node_manager = NodeManager()
+    return json.dumps(
+        {
+            "known_node_count": node_manager.known_node_count(),
+            "node_check_queue_size": node_manager.check_queue_size()
+        }
+    )
 
 
 def update_nodes_daemon():
