@@ -79,7 +79,9 @@ class NodeManager:
         self._nodes_to_check.enqueue(node, node.last_checked)
 
     def get_known_nodes_as_json(self):
-        return json.dumps([node.as_dict() for node in self._known_nodes])
+        nodes = sorted(list(self._known_nodes), key=lambda x: x.last_checked, reverse=True)
+        nodes = nodes[:(min(10, len(nodes)))]
+        return json.dumps([node.as_dict() for node in nodes])
 
     def check_next_node(self):
         if self._nodes_to_check.is_empty(): return
@@ -89,13 +91,6 @@ class NodeManager:
         node = self._nodes_to_check.dequeue()
         print(f"Checking node {node.host}:{node.port}")
 
-        # if node is NOT KNOWN then check it.
-        # if it IS KNOWN then check the node if it was not updated recently
-        if node in self._known_nodes:
-            if (datetime.now() - node.last_checked).total_seconds() < 10:
-                print(f"Node {node.host}:{node.port} was checked less than 10 seconds ago.")
-                self.add_node_to_check(node)
-                return
 
         # request URL to check if node is reachable
         try:
