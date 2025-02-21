@@ -6,6 +6,7 @@ from datetime import datetime
 from queue import PriorityQueue, Queue
 
 import requests
+from urllib3.exceptions import ProtocolError
 
 from util import ThreadSafeUniquePriorityQueue
 
@@ -90,15 +91,17 @@ class NodeManager:
         node = self._nodes_to_check.dequeue()
         print(f"Checking node {node.host}:{node.port}")
 
-        # construct address request URL to check if node is reachable
-        url = f"http://{node.host}:{node.port}/addr?"
-        params = {"host": self._instance_node.host, "port": self._instance_node.port}
-        response = requests.get(url + urllib.parse.urlencode(params))
-
-        if response.status_code != 200:
+        try:
+            # construct address request URL to check if node is reachable
+            url = f"http://{node.host}:{node.port}/addr?"
+            params = {"host": self._instance_node.host, "port": self._instance_node.port}
+            response = requests.get(url + urllib.parse.urlencode(params))
+            response.raise_for_status()
+        except Exception:
             print("Node at {node.host}:{node.port} is not reachable.")
-            print("Removing node from known nodes.")
-            self._known_nodes.remove(node)
+            if node in self._known_nodes:
+                print("Removing node from known nodes.")
+                self._known_nodes.remove(node)
             return
 
         # add requested node to known nodes and to be checked
