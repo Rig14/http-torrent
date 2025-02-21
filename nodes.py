@@ -116,14 +116,10 @@ class NodeManager:
             self.add_node_to_check(known_node)
 
 
-
-
-
-
 def update_nodes_daemon():
     node_manager = NodeManager()
     while True:
-        time.sleep(1)
+        time.sleep(0.2)
         node_manager.check_next_node()
 
 
