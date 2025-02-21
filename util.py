@@ -57,6 +57,7 @@ class ThreadSafeUniquePriorityQueue:
         with self.lock:
             return len(self.heap) == 0
 
-    def __repr__(self):
-        with self.lock:
-            return f"ThreadSafeUniquePriorityQueue({[item for _, item in self.heap]})"
+    def __str__(self):
+        # get all items in heap ordered
+        return str([str(item) for _, item in self.heap])
+

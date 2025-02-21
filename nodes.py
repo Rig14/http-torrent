@@ -32,6 +32,9 @@ class Node:
         )
         return node
 
+    def __str__(self):
+        return f"{self.host}:{self.port} - {self.last_checked}"
+
     def __lt__(self, other):
         return self.last_checked < other.last_checked
 
@@ -100,7 +103,11 @@ class NodeManager:
 
         # add requested node to known nodes and to be checked
         node.last_checked = datetime.now()
-        self._known_nodes.add(node)
+        try:
+            self._known_nodes.remove(node)
+        except KeyError: pass
+        finally:
+            self._known_nodes.add(node)
 
         # add the nodes known to requested node to the queue
         known_nodes = [Node.from_dict(x) for x in json.loads(response.content)]
