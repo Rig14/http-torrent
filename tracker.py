@@ -1,5 +1,4 @@
 import json
-import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from random import shuffle
 from threading import Thread
@@ -63,6 +62,8 @@ class Tracker:
 
                             clients = tracker.chunk_client_registry.get(h)
                             shuffle(clients)
+                            if len(clients) <= 0:
+                                continue
 
                             # check if already found client can handle the hash also (less strain on the network)
                             added = False
