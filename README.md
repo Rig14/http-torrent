@@ -1,2 +1,2 @@
 # http-torrent
-simple P2P distributed ledger and data sharing platform using HTTP protocol 
+simple P2P torrent client and tracker for file sharing. utilizing HTTP  
