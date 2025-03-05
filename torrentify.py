@@ -3,7 +3,7 @@ from hashlib import sha1
 import json
 
 # CHUNK_SIZE = 32768
-CHUNK_SIZE = 10
+CHUNK_SIZE = 128
 
 
 class Chunk:
@@ -14,10 +14,10 @@ class Chunk:
     def __init__(self, orderNumber, content):
         self.orderNumber = orderNumber
         self.content = content
-        self.hash = sha1(content)
+        self.hash = sha1(content).digest().hex()
 
     def __repr__(self):
-        return f"Chunk: {self.orderNumber} Content: ${self.content} Digest: {self.hash.digest()}"
+        return f"Chunk: {self.orderNumber} Content: ${self.content} Digest: {self.hash}"
 
 
 def chunkify(filename: str):
@@ -38,26 +38,20 @@ if __name__ == "__main__":
     tracker_url = sys.argv[2]
     file_hash = sha1()
    
-    # torrent_file = 
+    chunks = []
     with open("torrent.json", "w") as f:
         for chunk in chunkify(filename):
             file_hash.update(chunk.content)
-            json.dump({
+            chunks.append({
                 "orderNumber": chunk.orderNumber,
-                "hash": str(chunk.hash.digest())
-            }, f)
-       
-    
-    torrent_data = {
-        "fileName": filename,
-        "trackerUrl": tracker_url,
-        "fileHash": file_hash.digest()
-    }
-            
-        # f.write("}")
+                "hash": chunk.hash
+            })
+        json.dump({
+            "fileName": filename,
+            "trackerUrl": tracker_url,
+            "fileHash": file_hash.digest().hex(),
+            "chunks": chunks
+        }, f, indent=4)
         
-    print(file_hash.digest())
-
-
-
-
+    print(len(chunks)) 
+    print(file_hash.digest().hex())
