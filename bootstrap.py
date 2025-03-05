@@ -13,5 +13,9 @@ if __name__ == "__main__":
         torrent = json.load(f)
    
     print("Connecting tracker at", torrent["trackerUrl"])
-    response = requests.post(torrent["trackerUrl"], torrent)
-    # print(torrent)
+    response = requests.post(f"http://{torrent['trackerUrl']}/torrent", json.dumps(torrent), headers={
+        "Content-Length": str(len(torrent))
+    })
+    
+    print(torrent)
+    print(response.content)

@@ -3,6 +3,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from random import shuffle
 from threading import Thread
 import urllib.parse as urlparse
+import sys
 
 from util import get_ip
 
@@ -139,4 +140,5 @@ class Tracker:
 
 
 if __name__ == "__main__":
-    Tracker(5000)
+    port = int(sys.argv[1])
+    Tracker(port, serve_forever=True)
