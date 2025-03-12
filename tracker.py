@@ -38,21 +38,7 @@ class Tracker:
                 request_body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
 
                 # ROUTES
-                if parsed_url.path == "/torrent":
-                    # parse body into a torrent file
-                    try:
-                        j = json.loads(request_body)
-                        for chunk in j["chunks"]:
-                            chunk_hash = chunk["hash"]
-                            tracker.chunk_client_registry.update({chunk_hash: []})
-
-                        content = "File registered successfully"
-                        status = 200
-                    except Exception as e:
-                        content = f"Error parsing torrent file from request body {e}"
-                        status = 400
-                        print("Error parsing torrent file from request body", e)
-                elif parsed_url.path == "/chunk":
+                if parsed_url.path == "/chunk":
                     try:
                         hashes = json.loads(request_body)
                         max_hashes_per_client = len(hashes) // 4
@@ -60,7 +46,7 @@ class Tracker:
                         response = []
                         for h in hashes:
                             if h not in tracker.chunk_client_registry: raise Exception(f"Chunk ({h}) not registered in tracker")
-
+                        
                             clients = tracker.chunk_client_registry.get(h)
                             shuffle(clients)
                             if len(clients) <= 0:
@@ -100,7 +86,6 @@ class Tracker:
 
             def do_PUT(self):
                 parsed_url = urlparse.urlparse(self.path)
-
                 content: str = "404 Not Found."
                 status: int = 404
                 headers: list[tuple[str, str]] = []
@@ -110,17 +95,20 @@ class Tracker:
                 if parsed_url.path == "/chunk":
                     try:
                         j = json.loads(request_body)
-
+                                        
                         hashes = j["hashes"]
                         client = Client()
                         client.host = j["client_host"]
                         client.port = j["client_port"]
 
                         for h in hashes:
-                            if h not in tracker.chunk_client_registry: raise Exception(f"Chunk ({h}) not registered in tracker")
-
-                            clients = tracker.chunk_client_registry.get(h)
-                            clients.append(client)
+                            # if h not in tracker.chunk_client_registry: raise Exception(f"Chunk ({h}) not registered in tracker")
+                            if h not in tracker.chunk_client_registry:
+                                tracker.chunk_client_registry[h] = [client]
+                            else:
+                                clients = tracker.chunk_client_registry.get(h)
+                                clients.append(client)
+                            print(tracker.chunk_client_registry)
 
                         content = "Ok"
                         status = 200
