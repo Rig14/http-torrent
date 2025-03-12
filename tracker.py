@@ -131,7 +131,6 @@ class Tracker:
 
                 # ROUTES
                 if parsed_url.path == "/metrics":
-                    # we are interested in what is the seeder and leecher count
                     # we can also return the list of clients and their chunks
                     content = json.dumps(tracker.chunk_client_registry)
                     status = 200
