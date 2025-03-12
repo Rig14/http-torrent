@@ -16,6 +16,7 @@ class ClientMetrics:
     downloaded_chunks: int
     uploaded_chunks: int
     total_chunks: int
+    chunk_size: int
 
 
 metrics: dict[Client, ClientMetrics] = {}
@@ -31,7 +32,8 @@ def get_metrics():
             "client": "12.45.21.23:2234",
             "downloaded_chunks": 10,
             "uploaded_chunks": 20,
-            "total_chunks": 100
+            "total_chunks": 100,
+            "chunk_size": 128
         },
         ...
     ]
@@ -40,7 +42,8 @@ def get_metrics():
         "client": f"{client.client_host}:{client.client_port}",
         "downloaded_chunks": metrics[client].downloaded_chunks,
         "uploaded_chunks": metrics[client].uploaded_chunks,
-        "total_chunks": metrics[client].total_chunks
+        "total_chunks": metrics[client].total_chunks,
+        "chunk_size": metrics[client].chunk_size
     } for client in metrics])
 
 ######################
@@ -55,7 +58,8 @@ def post_metrics():
         "client_port": 1234,
         "downloaded_chunks": 10,
         "uploaded_chunks": 20,
-        "total_chunks": 100
+        "total_chunks": 100,
+        "chunk_size": 128
     }
     """
     j = request.get_json()
@@ -70,6 +74,7 @@ def post_metrics():
     metrics[client].downloaded_chunks = j["downloaded_chunks"]
     metrics[client].uploaded_chunks = j["uploaded_chunks"]
     metrics[client].total_chunks = j["total_chunks"]
+    metrics[client].chunk_size = j["chunk_size"]
 
     return "Ok"
 
