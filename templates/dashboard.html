@@ -204,60 +204,6 @@
             .catch(error => {
                 console.error('Error fetching client data:', error);
                 statusElement.textContent = 'Error: Failed to fetch data';
-
-                // For demo purposes only - remove in production
-                // Mock data in case the endpoint is not available
-                const mockData = [
-                    {
-                        "client": "12.45.21.23:2234",
-                        "downloaded_chunks": 35,
-                        "uploaded_chunks": 42,
-                        "total_chunks": 100
-                    },
-                    {
-                        "client": "192.168.1.5:8080",
-                        "downloaded_chunks": 100,
-                        "uploaded_chunks": 156,
-                        "total_chunks": 100
-                    },
-                    {
-                        "client": "10.0.0.15:4321",
-                        "downloaded_chunks": 75,
-                        "uploaded_chunks": 50,
-                        "total_chunks": 100
-                    },
-                    {
-                        "client": "172.16.254.1:9090",
-                        "downloaded_chunks": 90,
-                        "uploaded_chunks": 132,
-                        "total_chunks": 100
-                    },
-                    {
-                        "client": "45.60.75.89:6242",
-                        "downloaded_chunks": 15,
-                        "uploaded_chunks": 8,
-                        "total_chunks": 100
-                    },
-                    {
-                        "client": "192.168.0.112:5538",
-                        "downloaded_chunks": 64,
-                        "uploaded_chunks": 78,
-                        "total_chunks": 100
-                    },
-                    {
-                        "client": "10.10.10.54:1234",
-                        "downloaded_chunks": 100,
-                        "uploaded_chunks": 214,
-                        "total_chunks": 100
-                    },
-                    {
-                        "client": "8.8.4.4:7777",
-                        "downloaded_chunks": 28,
-                        "uploaded_chunks": 16,
-                        "total_chunks": 100
-                    }
-                ];
-                updateClients(mockData);
             });
 
         // Update status
