@@ -102,20 +102,20 @@ class Tracker:
                         client.port = j["client_port"]
 
                         for h in hashes:
+                            hash = h
                             # if h not in tracker.chunk_client_registry: raise Exception(f"Chunk ({h}) not registered in tracker")
-                            if h not in tracker.chunk_client_registry:
-                                tracker.chunk_client_registry[h] = [client]
+                            if hash not in tracker.chunk_client_registry:
+                                tracker.chunk_client_registry[hash] = [client]
                             else:
-                                clients = tracker.chunk_client_registry.get(h)
+                                clients = tracker.chunk_client_registry.get(hash)
                                 clients.append(client)
-                            print(tracker.chunk_client_registry)
 
                         content = "Ok"
                         status = 200
                     except Exception as e:
-                        content = f"Error parsing torrent file from request body {e}"
+                        content = f"Error passing from request body {e}"
                         status = 400
-                        print("Error parsing torrent file from request body", e)
+                        print("Error parsing request body", e)
 
                 # SENDING
                 self.send_response(status)
