@@ -20,7 +20,7 @@ class TorrentFileChunk:
 
 @dataclass
 class DataChunk:
-    orderNumber: int
+    order_number: int
     content: bytes
     hash: str
 
@@ -33,19 +33,19 @@ class Peer:
 
 
 class TorrentData:
-    chunks: list[TorrentFileChunk]
+    chunks: list[TorrentFileChunk] = []
     tracker_url: str
     file_name: str
     file_hash: str
     chunk_size: int
+    chunk_hash_id_map: dict[str, str] = {}
 
     def __init__(self, torrent_file: dict):
-        self.chunks = list(
-            map(
-                lambda x: TorrentFileChunk(x["orderNumber"], x["hash"]),
-                torrent_file["chunks"],
-            )
-        )
+        for chunkJson in torrent_file["chunks"]:
+            torrent_file_chunk = TorrentFileChunk(chunkJson["orderNumber"], chunkJson["hash"]) 
+            self.chunks.append(torrent_file_chunk)
+            self.chunk_hash_id_map[chunkJson["hash"]] = chunkJson["orderNumber"]
+            
         self.tracker_url = f"http://{torrent_file["trackerUrl"]}/chunk"
         self.file_hash = torrent_file["fileHash"]
         self.file_name = torrent_file["fileName"]
@@ -78,14 +78,12 @@ class TorrentClient:
             self.needed_chunks_hashes.remove(chunk_hash)
             self.owned_chunks.append(chunk)
 
-    def write_owned_chunks_to_file(self):
-        while True:
-            with open(self.temp_file_name, "wb") as f:
-                for chunk in self.owned_chunks:
+    def write_chunks_to_file(self):
+        with open(self.temp_file_name, "wb") as f:
+             for chunk in self.owned_chunks:
                     written = f.write(chunk.content)
                     print(written, "bytes written")
                     
-            time.sleep(10)
 
 
     def request_peers_with_chunks(self):
@@ -163,11 +161,15 @@ class TorrentClient:
                     chunk_hash = random.choice(peer.peer_chunks)
                     s.send(chunk_hash.encode())
                     data = s.recv(torrent_data.chunk_size)
-                    chunk = DataChunk(0, data, sha1(data).hexdigest())
-                    self.load_chunk(chunk)
-                    if not data:
+                    if data:
+                        print(f"Peer {peer.peer_host}:{peer.peer_port} sends {data}")
+                        
+                        sent_chunk_hash = sha1(data).hexdigest()
+                        order_number = int(self.torrent_data.chunk_hash_id_map[sent_chunk_hash])
+                        chunk = DataChunk(order_number, data, sent_chunk_hash)
+                        self.load_chunk(chunk)
+                    else:
                         break
-                    print("Seeder sends", data)
                 # print("Chunks fetched")
             except ConnectionRefusedError:
                 print(f"Peer {peer} refused connection")
@@ -181,11 +183,23 @@ class TorrentClient:
                     for peer in peers:
                         self.fetch_chunk_from_peer(peer)
                     
+                    self.write_chunks_to_file()
                     self.announce_chunks_to_tracker()
                     time.sleep(5)
                 else:
                     print("All the pieces gotten")
-                    # must now assemble the file
+                    self.owned_chunks.sort(key=lambda x: x.order_number)
+                    file_hash = sha1()
+
+                    for chunk in self.owned_chunks:
+                        file_hash.update(chunk.content)
+
+                    print(file_hash.hexdigest(), self.torrent_data.file_hash)
+                    if file_hash.hexdigest() == self.torrent_data.file_hash:
+                        print("Integrity check succeeded")
+                        self.write_chunks_to_file()
+                        self.announce_chunks_to_tracker()
+                
                     break
             except Exception as e:
                 print(f"Error in fetch thread: {e}")
@@ -200,7 +214,7 @@ class TorrentClient:
         seeding_thread = threading.Thread(target=self.seed_chunks, daemon=True)
         seeding_thread.start()
 
-        flushing_to_file_thread = threading.Thread(target=self.write_owned_chunks_to_file, daemon=True)
+        # flushing_to_file_thread = threading.Thread(target=self.write_chunks_to_file, daemon=True)
 
         if os.path.exists(ready_data_name):
             # chunkify the existing file and only start seeding
@@ -223,7 +237,6 @@ class TorrentClient:
                 daemon=True
             )
             
-            flushing_to_file_thread.start()
             fetching_thread.start()
         try:
             while True:
