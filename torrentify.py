@@ -11,7 +11,7 @@ class Chunk:
     def __init__(self, orderNumber, content):
         self.orderNumber = orderNumber
         self.content = content
-        self.hash = sha1(content).digest().hex()
+        self.hash = sha1(content).hexdigest()
 
     def __repr__(self):
         return f"Chunk: {self.orderNumber} Content: ${self.content} Digest: {self.hash}"
@@ -46,7 +46,7 @@ if __name__ == "__main__":
                 "fileName": filename,
                 "chunkSize": chunk_size,
                 "trackerUrl": tracker_url,
-                "fileHash": file_hash.digest().hex(),
+                "fileHash": file_hash.hexdigest(),
                 "chunks": chunks,
             },
             f,
