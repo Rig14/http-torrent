@@ -1,9 +1,12 @@
 import json
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from random import shuffle
 from threading import Thread
 import urllib.parse as urlparse
 import sys
+
+import requests
 
 from util import get_ip
 
@@ -11,6 +14,12 @@ from util import get_ip
 class Client:
     host: str
     port: str
+
+    def __hash__(self):
+        return hash((self.host, self.port))
+
+    def __eq__(self, other):
+        return self.host == other.host and self.port == other.port
 
 
 class Tracker:
@@ -21,6 +30,8 @@ class Tracker:
 
         Thread(target=self.start_http_listener, daemon=True).start()
         print(f"Tracker server started on {self.host}:{self.port}")
+
+        Thread(target=self.clients_health_check, daemon=True).start()
 
         if serve_forever:
             while True:
@@ -46,7 +57,7 @@ class Tracker:
 
                         response = []
                         for h in hashes:
-                            if h not in tracker.chunk_client_registry: raise Exception(f"Chunk ({h}) not registered in tracker")
+                            if h not in tracker.chunk_client_registry: raise Exception(f"Chunk ({h}) is not tracked by the tracker")
                         
                             clients = tracker.chunk_client_registry.get(h)
                             shuffle(clients)
@@ -102,12 +113,10 @@ class Tracker:
                         client.port = j["client_port"]
 
                         for h in hashes:
-                            hash = h
-                            # if h not in tracker.chunk_client_registry: raise Exception(f"Chunk ({h}) not registered in tracker")
-                            if hash not in tracker.chunk_client_registry:
-                                tracker.chunk_client_registry[hash] = [client]
+                            if h not in tracker.chunk_client_registry:
+                                tracker.chunk_client_registry[h] = [client]
                             else:
-                                clients = tracker.chunk_client_registry.get(hash)
+                                clients = tracker.chunk_client_registry.get(h)
                                 clients.append(client)
 
                         content = "Ok"
@@ -123,28 +132,28 @@ class Tracker:
                 self.end_headers()
                 self.wfile.write(content.encode("UTF-8"))
 
-            def do_GET(self):
-                parsed_url = urlparse.urlparse(self.path)
-                content: str = "404 Not Found."
-                status: int = 404
-                headers: list[tuple[str, str]] = []
-
-                # ROUTES
-                if parsed_url.path == "/metrics":
-                    # we can also return the list of clients and their chunks
-                    content = json.dumps(tracker.chunk_client_registry)
-                    status = 200
-
-                # SENDING
-                self.send_response(status)
-                for header in headers: self.send_header(header[0], header[1])
-                self.end_headers()
-                self.wfile.write(content.encode("UTF-8"))
 
         server = HTTPServer((self.host, self.port), Handler)
         server.serve_forever()
 
+    def clients_health_check(self):
+        while True:
+            clients_to_check = set()
+            for hashes in self.chunk_client_registry.values():
+                for client in hashes:
+                    clients_to_check.add(client)
+
+            for client in clients_to_check:
+                try:
+                    response = requests.get(f"http://{client.host}:{client.port}/ping")
+                    response.raise_for_status()
+                except Exception as e:
+                    print(f"Client {client.host}:{client.port} is not reachable [reason {e}]. Removing.")
+                    for hashes in self.chunk_client_registry.values():
+                        if client in hashes:
+                            hashes.remove(client)
+            time.sleep(5)
 
 if __name__ == "__main__":
-    port = int(sys.argv[1])
+    port = 5000
     Tracker(port, serve_forever=True)

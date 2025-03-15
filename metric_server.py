@@ -1,3 +1,5 @@
+import time
+
 from flask import Flask, render_template, request, jsonify
 
 app = Flask(__name__)
@@ -20,6 +22,7 @@ class ClientMetrics:
 
 
 metrics: dict[Client, ClientMetrics] = {}
+last_updated: dict[Client, float] = {}
 @app.route("/")
 def hello_world():
     return render_template("dashboard.html")
@@ -76,11 +79,17 @@ def post_metrics():
     metrics[client].total_chunks = j["total_chunks"]
     metrics[client].chunk_size = j["chunk_size"]
 
+    last_updated[client] = time.time()
+
+    for k, v in last_updated.items():
+        if time.time() - v > 15:
+            del metrics[k]
+            del last_updated[k]
+
     return "Ok"
 
-
-
-
+if __name__ == "__main__":
+    app.run(port=8080)
 
 
 

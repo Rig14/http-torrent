@@ -1,199 +1,263 @@
-import sys
+import base64
 import json
-import requests
-import concurrent.futures
-import util
-import socket
-import time
 import os
+import sys
+import time
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from random import shuffle
+from threading import Thread
+from uuid import uuid4
+import urllib.parse as urlparse
 
-from hashlib import sha1
-from dataclasses import dataclass, asdict
+
+import requests
+
 from torrentify import chunkify
+from util import get_ip, find_free_port
 
-
-@dataclass
-class TorrentFileChunk:
-    order_number: int
+class FileChunk:
+    orderNumber: int
     hash: str
 
+class Provider:
+    client_host: str
+    client_port: int
+    hashes: list[str]
 
-@dataclass
-class DataChunk:
-    orderNumber: int
-    content: bytes
-
-
-@dataclass
-class Peer:
-    peer_host: str
-    peer_port: int
-    peer_chunks: [str]
-
-
-class TorrentData:
-    chunks: list[TorrentFileChunk]
-    tracker_url: str
-    file_name: str
-    file_hash: str
-    chunk_size: int
-
-    def __init__(self, torrent_file: dict):
-        self.chunks = list(
-            map(
-                lambda x: TorrentFileChunk(x["orderNumber"], x["hash"]),
-                torrent_file["chunks"],
-            )
-        )
-        self.tracker_addr = torrent_file["trackerUrl"]
-        self.file_hash = torrent_file["fileHash"]
-        self.file_name = torrent_file["fileName"]
-        self.chunk_size = int(torrent_file["chunkSize"])
-
-    def __repr__(self):
-        return f"Tracker: {self.tracker_addr}, Chunks length: {len(self.chunks)}, Filename {self.file_name}, File hash {self.file_hash}"
+class TorrentDetails:
+    fileName: str
+    chunkSize: int
+    trackerUrl: str
+    fileHash: str
+    chunks: list[FileChunk]
 
 
-class TorrentClient:
-    owned_chunks: list[DataChunk]
-    needed_chunks: list[DataChunk]
-    torrent_data: TorrentData
-    tracker_url: str
-    seed_port = 5001
-    tracker_batch_size = 5
-    client_ip: str
-    temp_file_name: str
+class Client:
+    def __init__(self, torrent_file_details: TorrentDetails, has_file=False):
+        self.host: str = get_ip()
+        self.port: int = find_free_port()
+        self.torrent_file_details: TorrentDetails = torrent_file_details
+        self.available_chunks: list[str] = []
+        self.uploaded_chunks: int = 0
 
-    def __init__(self, torrent_data: TorrentData):
-        self.torrent_data = torrent_data
-        self.owned_chunks = set()
-        self.needed_chunks = {chunk.hash for chunk in torrent_data.chunks}
-        self.client_ip = util.get_ip()
-        self.tracker_url = f"http://{torrent_data.tracker_addr}/chunk"
-        self.temp_file_name = os.path.join(os.getcwd(), f"{torrent_data.file_name}.tmp")
+        self.id: str = uuid4().hex
+        self.temp_path: str = f"/tmp/http-torrent/{self.id}"
+        os.makedirs(self.temp_path, exist_ok=True)
 
-    def load_chunk(self, chunk: DataChunk):
-        chunk_hash = sha1(chunk.content).hexdigest()
-        if chunk_hash in self.needed_chunks:
-            self.needed_chunks.remove(chunk_hash)
-            self.owned_chunks.add(chunk.content)
-            self.write_chunk_to_file(chunk)
+        try:
+            if not has_file: raise FileNotFoundError
+            chunks = chunkify(self.torrent_file_details.fileName, self.torrent_file_details.chunkSize)
+            for chunk in chunks:
+                with open(f"{self.temp_path}/{chunk.hash}", "wb") as f:
+                    f.write(chunk.content)
+                self.available_chunks.append(chunk.hash)
+        except FileNotFoundError:
+            print(f"Torrent file {self.torrent_file_details.fileName} not found on system. Continuing...")
 
-    def write_chunk_to_file(self, chunk: DataChunk):
-        with open(self.temp_file_name, "wb") as f:
-            f.write(chunk.content)
+        Thread(target=self.listener, daemon=True).start()
+        print(f"Torrent client listening on {self.host}:{self.port}")
 
-    def fetch_chunk_from_peer(self, peer: Peer):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            try:
-                s.connect((peer.peer_host, peer.peer_port))
-                while True:
-                    data = s.recv(torrent_data.chunk_size)
-                    chunk = DataChunk(0, data)
-                    self.load_chunk(chunk)
-                    if not data:
-                        break
-                    print("Seeder sends", data)
-                print("Leecher ended connection")
-            except ConnectionRefusedError:
-                print(f"Peer {peer} refused connection")
+        if len(self.available_chunks) > 0:
+            self.announce_hashes(self.available_chunks)
 
-    def request_peers_with_chunks(self):
-        for i in range(0, len(torrent_data.chunks), self.tracker_batch_size):
-            chunk_batch = list(self.needed_chunks)[i : i + self.tracker_batch_size]
-            chunk_batch_json = json.dumps(chunk_batch)
-            resp = requests.post(self.tracker_url, chunk_batch_json)
+        Thread(target=self.main_loop, daemon=True).start()
+        Thread(target=self.metrics_service, daemon=True).start()
+        print("Client started")
 
-            peer_data_json = json.loads(resp.content)
-            peers = [
-                Peer(
-                    peer_json["client_host"],
-                    peer_json["client_port"],
-                    peer_json["hash_list"],
-                )
-                for peer_json in peer_data_json
-            ]
 
-            return peers
+    def metrics_service(self) -> None:
+        while True:
+            payload = {
+                "client_host": self.host,
+                "client_port": self.port,
+                "downloaded_chunks": len(self.available_chunks),
+                "uploaded_chunks": self.uploaded_chunks,
+                "total_chunks": len(self.torrent_file_details.chunks),
+                "chunk_size": self.torrent_file_details.chunkSize
+            }
+            requests.post("http://localhost:8080/metrics", json=payload)
 
-    def seed_chunks(self):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.bind((self.client_ip, self.seed_port))
-            s.listen()
-            conn, addr = s.accept()
-            with conn:
-                print("Seeder connected by", addr)
-                for chunk in chunkify(
-                    self.torrent_data.file_name, torrent_data.chunk_size
-                ):
-                    print("Sending chunk: ", chunk.orderNumber)
-                    conn.send(chunk.content)
+            time.sleep(3)
 
-    def announce_chunks_to_tracker(self):
-        print("Announcing chunks to tracker")
-        for i in range(0, len(torrent_data.chunks), self.tracker_batch_size):
-            chunk_batch = list(self.owned_chunks)[i : i + self.tracker_batch_size]
-            # print(chunk_batch)
-            chunk_batch_json = json.dumps(
-                {
-                    "client_host": self.client_ip,
-                    "client_port": self.seed_port,
-                    "hashes": [sha1(chunk).hexdigest() for chunk in chunk_batch],
-                }
-            )
-            resp = requests.put(self.tracker_url, chunk_batch_json)
-            if resp.content == b"Ok":
-                print("Data successfully announced to tracker")
+    def main_loop(self) -> None:
+        while True:
+            missing_hashes = self.get_missing_chunk_hashes()
+            # request max 5 chunks at a time
+            shuffle(missing_hashes)
+            missing_hashes = missing_hashes[:5]
+            if len(missing_hashes) > 0:
+                providers = self.get_providers_for_hashes(missing_hashes)
+                for provider in providers:
+                    self.download_from_provider(provider)
             else:
-                print("Error:", resp.content)
+                print("All chunks downloaded. Seeding...")
 
-    def start_client(self):
-        # check if i have local chunks. do that by checking if i have filename in dir
-        ready_data_name = os.path.join(os.getcwd(), self.torrent_data.file_name)
+                # putting the chunks together into a file into the temp folder
+                chunks = []
+                for chunk in self.torrent_file_details.chunks:
+                    with open(f"{self.temp_path}/{chunk.hash}", "rb") as f:
+                        chunks.append(f.read())
 
-        print("Starting client")
+                with open(f"{self.temp_path}/{self.torrent_file_details.fileName}", "w+") as f: pass
+                with open(f"{self.temp_path}/{self.torrent_file_details.fileName}", "wb") as f:
+                    f.write(b"".join(chunks))
 
-        if os.path.exists(ready_data_name):
-            # assume client has the entire file
-            for chunk in chunkify(
-                self.torrent_data.file_name, self.torrent_data.chunk_size
-            ):
-                client.load_chunk(chunk)
+                break
+            if len(self.available_chunks) > 0:
+                self.announce_hashes(self.available_chunks)
+            time.sleep(5)
 
-            self.announce_chunks_to_tracker()
-            self.seed_chunks()
+    def get_missing_chunk_hashes(self) -> list[str]:
+        return list(set([x.hash for x in self.torrent_file_details.chunks]) - set(self.available_chunks))
 
-        elif os.path.exists(self.temp_file_name):
-            for chunk in chunkify(self.temp_file_name, self.torrent_data.chunk_size):
-                client.load_chunk(chunk)
+    def download_from_provider(self, provider: Provider) -> None:
+        print(f"Downloading {len(provider.hashes)} chunks from provider at {provider.client_host}:{provider.client_port}.")
 
-            peers = self.request_peers_with_chunks()
-            for peer in peers:
-                self.fetch_chunk_from_peer(peer)
-    
-            self.seed_port = util.find_free_port()
-            self.announce_chunks_to_tracker()
-            self.seed_chunks()
-            peers = self.request_peers_with_chunks()
+        try:
+            response = requests.post(
+                f"http://{provider.client_host}:{provider.client_port}/chunk",
+                json=provider.hashes
+            )
+            response.raise_for_status()
 
-        else:
-            # create new temp file
-            open(self.temp_file_name, "w").close()
-            peers = self.request_peers_with_chunks()
-            for peer in peers:
-                self.fetch_chunk_from_peer(peer)
+            for chunk in response.json():
+                with open(f"{self.temp_path}/{chunk['hash']}", "wb") as f:
+                    f.write(base64.b64decode(chunk["content"]))
+                self.available_chunks.append(chunk["hash"])
+
+        except Exception as e:
+            print(f"Error downloading chunks from provider: {e}")
 
 
-def load_torrent_file(torrent_file_name: str) -> TorrentData:
-    with open(torrent_file_name, "r") as f:
-        torrent_data_json = json.load(f)
-        torrent_data = TorrentData(torrent_data_json)
+    def listener(self) -> None:
+        this_client = self
 
-    return torrent_data
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                parsed_url = urlparse.urlparse(self.path)
 
+                content: str = "404 Not Found."
+                status: int = 404
+                headers: list[tuple[str, str]] = []
+                request_body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+
+
+                # ROUTES
+                if parsed_url.path == "/chunk":
+                    try:
+                        j = json.loads(request_body)
+                        if not isinstance(j, list): raise Exception("Invalid request body")
+                        if not all([isinstance(x, str) for x in j]): raise Exception("Invalid request body")
+                        if not all([x in this_client.available_chunks for x in j]): raise Exception("Invalid request. I dont have your chunks :(")
+
+                        chunks = []
+                        for chunk_hash in j:
+                            with open(f"{this_client.temp_path}/{chunk_hash}", "rb") as f:
+                                file_content = f.read()
+                                chunks.append({
+                                    "hash": chunk_hash,
+                                    "content": base64.b64encode(file_content).decode('ascii')
+                                })
+
+                        content = json.dumps(chunks)
+                        status = 200
+                        this_client.uploaded_chunks += len(chunks)
+                    except Exception as e:
+                        content = f"400 Bad Request: {e}"
+                        print("Error parsing request body", e)
+                        status = 400
+
+
+                # SENDING
+                self.send_response(status)
+                for header in headers: self.send_header(header[0], header[1])
+                self.end_headers()
+                self.wfile.write(content.encode("UTF-8"))
+
+            def do_GET(self):
+                parsed_url = urlparse.urlparse(self.path)
+
+                content: str = "404 Not Found."
+                status: int = 404
+                headers: list[tuple[str, str]] = []
+
+
+                # ROUTES
+                if parsed_url.path == "/ping":
+                    content = "pong"
+                    status = 200
+
+                # SENDING
+                self.send_response(status)
+                for header in headers: self.send_header(header[0], header[1])
+                self.end_headers()
+                self.wfile.write(content.encode("UTF-8"))
+
+        server = HTTPServer((self.host, self.port), Handler)
+        server.serve_forever()
+
+    def announce_hashes(self, hashes: list[str]) -> None:
+        print(f"Announcing {len(hashes)} hashes to tracker at {self.torrent_file_details.trackerUrl}.")
+
+        payload = {
+            "client_host": self.host,
+            "client_port": self.port,
+            "hashes": hashes
+        }
+
+        try:
+            response = requests.put(
+                "http://" + self.torrent_file_details.trackerUrl + "/chunk",
+                json=payload
+            )
+            response.raise_for_status()
+        except Exception as e:
+            print(f"Error announcing hashes: {e}")
+
+
+    def get_providers_for_hashes(self, hashes: list[str]) -> list[Provider]:
+        print(f"Getting known clients for {len(hashes)} hashes from tracker at {self.torrent_file_details.trackerUrl}.")
+
+        try:
+            response = requests.post(
+                "http://" + self.torrent_file_details.trackerUrl + "/chunk",
+                json=hashes
+            )
+            response.raise_for_status()
+
+            providers: list[Provider] = []
+            for provider in response.json():
+                p = Provider()
+                p.client_host = provider["client_host"]
+                p.client_port = provider["client_port"]
+                p.hashes = provider["hash_list"]
+                providers.append(p)
+
+            return providers
+
+        except Exception as e:
+            print(f"Error getting known clients for hashes: {e}")
+            return []
 
 if __name__ == "__main__":
-    torrent_file_name = sys.argv[1]
-    torrent_data = load_torrent_file(torrent_file_name)
-    client = TorrentClient(torrent_data)
-    client.start_client()
+    with open("torrent.json") as f:
+        content = json.load(f)
+        torrent_details = TorrentDetails()
+        torrent_details.fileName = content["fileName"]
+        torrent_details.chunkSize = content["chunkSize"]
+        torrent_details.trackerUrl = content["trackerUrl"]
+        torrent_details.fileHash = content["fileHash"]
+        torrent_details.chunks = [FileChunk() for _ in content["chunks"]]
+        for i, chunk in enumerate(content["chunks"]):
+            torrent_details.chunks[i].orderNumber = chunk["orderNumber"]
+            torrent_details.chunks[i].hash = chunk["hash"]
+
+    client = Client(torrent_details, len(sys.argv) > 1)
+
+    while True:
+        pass
+
+
+
+
+
