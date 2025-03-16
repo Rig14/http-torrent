@@ -54,7 +54,7 @@ class TorrentClient:
     owned_chunks: list[DataChunk]
     needed_chunks_hashes: set[str]
     torrent_data: TorrentData
-    seed_port = 5001
+    seed_port: int
     tracker_batch_size = 5
     client_ip: str
     temp_file_name: str
@@ -113,7 +113,6 @@ class TorrentClient:
     def announce_chunks_to_tracker(self):
         for i in range(0, len(self.owned_chunks), self.tracker_batch_size):
             chunk_batch = self.owned_chunks[i : i + self.tracker_batch_size]
-            # print(chunk_batch)
             chunk_batch_json = json.dumps(
                 {
                     "client_host": self.client_ip,
@@ -122,9 +121,7 @@ class TorrentClient:
                 }
             )
             resp = requests.put(self.torrent_data.tracker_url, chunk_batch_json)
-            if resp.content == b"Ok":
-                print("Data successfully announced to tracker")
-            else:
+            if resp.content != b"Ok":
                 print("Error:", resp.content)
 
     def fetch_chunk_from_peer(self, peer: Peer):
@@ -137,7 +134,7 @@ class TorrentClient:
                     s.send(chunk_hash.encode())
                     data = s.recv(torrent_data.chunk_size)
                     if data:
-                        print(f"Peer {peer.peer_host}:{peer.peer_port} sends {data}")
+                        print(f"Peer {peer.peer_host}:{peer.peer_port} sends data")
                         
                         sent_chunk_hash = sha1(data).hexdigest()
                         order_number = int(self.torrent_data.chunk_hash_id_map[sent_chunk_hash])
@@ -164,11 +161,9 @@ class TorrentClient:
                     if needed_length > length_after:
                         self.write_chunks_to_file()
                         self.announce_chunks_to_tracker()
-                    # time.sleep(5)
                 else:
                     print("All the pieces gotten")
                     file_hash = sha1()
-                    print(self.owned_chunks)
                     self.owned_chunks.sort(key=lambda x: x.offset)
                     for chunk in self.owned_chunks:
                         file_hash.update(chunk.content)
@@ -229,7 +224,6 @@ class TorrentClient:
         # port from which the client starts tcp server to serve chunks
         self.seed_port = util.find_free_port()
         seeding_thread = threading.Thread(target=self.seed_chunks, daemon=True)
-        fetching_thread = threading.Thread(target=self.fetch_from_peers, daemon=True)
 
         if os.path.exists(self.ready_file_name):
             # chunkify the existing file and only start seeding
@@ -257,7 +251,10 @@ class TorrentClient:
                 open(self.download_metadata_file_name, "wb").close()
                     
             seeding_thread.start()
-            fetching_thread.start()
+           
+            for i in range(2):
+                fetching_thread = threading.Thread(target=self.fetch_from_peers, daemon=True)
+                fetching_thread.start()
         try:
             while True:
                 time.sleep(0.1)  # Sleep to avoid high CPU usage
