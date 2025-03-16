@@ -1,6 +1,8 @@
 import sys
-from hashlib import sha1
 import json
+import os
+
+from hashlib import sha1
 
 
 class Chunk:
@@ -16,7 +18,6 @@ class Chunk:
     def __repr__(self):
         return f"Chunk: {self.orderNumber} Content: ${self.content} Digest: {self.hash}"
 
-
 def chunkify(filename: str, chunk_size: int):
     with open(filename, "rb") as f:
         it = 0
@@ -24,7 +25,6 @@ def chunkify(filename: str, chunk_size: int):
             chunk = Chunk(it, buffer)
             it += 1
             yield chunk
-
 
 if __name__ == "__main__":
     if len(sys.argv) != 4:
@@ -34,6 +34,7 @@ if __name__ == "__main__":
     filename = sys.argv[1]
     tracker_url = sys.argv[2]
     chunk_size = int(sys.argv[3])
+    file_size = os.path.getsize(filename)
     file_hash = sha1()
 
     chunks = []
@@ -47,6 +48,7 @@ if __name__ == "__main__":
                 "chunkSize": chunk_size,
                 "trackerUrl": tracker_url,
                 "fileHash": file_hash.hexdigest(),
+                "fileSize": file_size,
                 "chunks": chunks,
             },
             f,
