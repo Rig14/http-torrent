@@ -16,7 +16,6 @@ from dataclasses import dataclass
 @dataclass
 class DataChunk:
     offset: int
-    # content: bytes
     hash: str
 
 
@@ -61,6 +60,7 @@ class TorrentClient:
     temp_file_name: str
     download_metadata_file_name: str
     ready_file_name: str
+    uploaded_chunks: int
 
     def __init__(self, torrent_data: TorrentData):
         self.torrent_data = torrent_data
@@ -72,6 +72,7 @@ class TorrentClient:
             os.getcwd(), f"{torrent_data.file_name}.metadata.txt"
         )
         self.ready_file_name = os.path.join(os.getcwd(), self.torrent_data.file_name)
+        self.uploaded_chunks = 0
 
     def request_peers_with_chunks(self) -> Generator[list[Peer], None, None]:
         for i in range(0, len(self.needed_chunks_hashes), self.tracker_batch_size):
@@ -126,7 +127,6 @@ class TorrentClient:
                             client.register_chunk_to_memory(chunk)
                         self.announce_chunks_to_tracker()
 
-
                     else:
                         print(
                             "File hashes differed",
@@ -160,7 +160,7 @@ class TorrentClient:
                     if len(complete) > 0:
                         print("Received", len(complete), "bytes of data")
                         sent_chunk_hash = sha1(complete).hexdigest()
-                        print(sent_chunk_hash, chunk_hash)
+                        
                         if sent_chunk_hash == chunk_hash:
                             order_number = int(
                                 self.torrent_data.chunk_hash_id_map[sent_chunk_hash]
@@ -187,9 +187,22 @@ class TorrentClient:
 
                 with conn:
                     print("Seeder connected by", addr)
+                   
+                    # msg_type_length = 3
+                    message = conn.recv(1024).decode()
+                    
+                    if message.startswith("GET"):
+                        # healthcheck
+                        print("Tracker sent health request")
+                        response = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK"
+                        conn.sendall(response)
+                        
+                        conn.close()
+                        continue
 
                     hash_digest_length = 40
-                    needed_hash = conn.recv(hash_digest_length).decode()
+                    # needed_hash = conn.recv(hash_digest_length).decode()
+                    needed_hash = message[0:hash_digest_length]
                     print("Leecher needs", needed_hash)
 
                     needed_chunk = [
@@ -198,9 +211,8 @@ class TorrentClient:
                         if chunk.hash == needed_hash
                     ][0]
                     content = self.read_chunk_content_from_disk(needed_chunk)
-                    if len(content) != 32000:
-                        print("odd")
                     conn.sendall(content)
+                    self.uploaded_chunks +=1
                     print(f"Sent {needed_chunk.hash} to leecher")
 
     def announce_chunks_to_tracker(self):
@@ -270,6 +282,7 @@ class TorrentClient:
         # port from which the client starts tcp server to serve chunks
         self.seed_port = util.find_free_port()
         seeding_thread = threading.Thread(target=self.seed_chunks, daemon=True)
+        threading.Thread(target=self.metrics_service, daemon=True).start()
 
         if os.path.exists(self.ready_file_name):
             # chunkify the existing file and only start seeding
@@ -310,6 +323,19 @@ class TorrentClient:
         except KeyboardInterrupt:
             print("Shutting down client...")
 
+    def metrics_service(self) -> None:
+        while True:
+            payload = {
+                "client_host": self.client_ip,
+                "client_port": self.seed_port,
+                "downloaded_chunks": len(self.owned_chunks),
+                "uploaded_chunks": self.uploaded_chunks,
+                "total_chunks": len(self.torrent_data.chunk_hashes),
+                "chunk_size": self.torrent_data.chunk_size
+            }
+            requests.post("http://localhost:5000/metrics", json=payload)
+
+            time.sleep(3)
 
 if __name__ == "__main__":
     torrent_file_name = sys.argv[1]
