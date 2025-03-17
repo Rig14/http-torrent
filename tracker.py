@@ -7,6 +7,7 @@ import sys
 
 from util import get_ip
 
+
 class Client:
     host: str
     port: str
@@ -72,7 +73,6 @@ class Tracker:
                         ])
                         status = 200
 
-
                     except Exception as e:
                         print("Could not parse chunk request", e)
                         status = 400
@@ -116,6 +116,24 @@ class Tracker:
                         content = f"Error passing from request body {e}"
                         status = 400
                         print("Error parsing request body", e)
+
+                # SENDING
+                self.send_response(status)
+                for header in headers: self.send_header(header[0], header[1])
+                self.end_headers()
+                self.wfile.write(content.encode("UTF-8"))
+
+            def do_GET(self):
+                parsed_url = urlparse.urlparse(self.path)
+                content: str = "404 Not Found."
+                status: int = 404
+                headers: list[tuple[str, str]] = []
+
+                # ROUTES
+                if parsed_url.path == "/metrics":
+                    # we can also return the list of clients and their chunks
+                    content = json.dumps(tracker.chunk_client_registry)
+                    status = 200
 
                 # SENDING
                 self.send_response(status)
