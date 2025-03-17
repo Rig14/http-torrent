@@ -98,14 +98,15 @@ class TorrentClient:
     def fetch_chunk_from_peer(self, peer: Peer):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             try:
+                print(f"Fetching peer {peer.peer_host}:{peer.peer_port}")
                 s.connect((peer.peer_host, peer.peer_port))
+                
                 while True:
                     # give me a random chunk from peer's chunk list
                     chunk_hash = random.choice(peer.peer_chunks)
                     s.send(chunk_hash.encode())
                     data = s.recv(torrent_data.chunk_size)
                     if data:
-                        print(f"Peer {peer.peer_host}:{peer.peer_port} sends data")
 
                         sent_chunk_hash = sha1(data).hexdigest()
                         order_number = int(
@@ -168,10 +169,11 @@ class TorrentClient:
                 time.sleep(10)
 
     def seed_chunks(self):
-        print("Seeding chunks...")
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.bind((self.client_ip, self.seed_port))
+            
             s.listen()
+            print(f"Seeding chunks on {self.client_ip}:{self.seed_port}")
 
             while True:
                 conn, addr = s.accept()
