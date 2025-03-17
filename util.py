@@ -15,7 +15,17 @@ def get_ip():
     return IP
 
 def find_free_port():
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-        s.bind(('', 0))
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        return s.getsockname()[1]
+    start_range = 26000
+    end_range = 26100
+
+    for port in range(start_range, end_range):
+        # print("Trying port", port)
+        with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+            try:
+                s.bind(('', port))
+            # s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                s.close()
+                return port
+            except OSError:
+                continue
+            # return s.getsockname()[1]
