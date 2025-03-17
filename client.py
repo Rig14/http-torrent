@@ -122,7 +122,7 @@ class TorrentClient:
                         )
                         offset = order_number * torrent_data.chunk_size
                         chunk = DataChunk(offset, sent_chunk_hash)
-                        self.write_chunk_content_to_disk(chunk, data)
+                        self.write_chunk_content_to_disk(chunk, complete)
                         self.register_chunk_to_memory(chunk)
                     else:
                         break
