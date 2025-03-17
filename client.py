@@ -108,12 +108,11 @@ class TorrentClient:
                     data = s.recv(torrent_data.chunk_size)
                     if data:
 
-                        sent_chunk_hash = sha1(data).hexdigest()
                         order_number = int(
-                            self.torrent_data.chunk_hash_id_map[sent_chunk_hash]
+                            self.torrent_data.chunk_hash_id_map[chunk_hash]
                         )
                         offset = order_number * torrent_data.chunk_size
-                        chunk = DataChunk(offset, sent_chunk_hash)
+                        chunk = DataChunk(offset, chunk_hash)
                         self.write_chunk_content_to_disk(chunk, data)
                         self.register_chunk_to_memory(chunk)
                     else:
