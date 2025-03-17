@@ -16,7 +16,7 @@ from dataclasses import dataclass
 @dataclass
 class DataChunk:
     offset: int
-    content: bytes
+    # content: bytes
     hash: str
 
 
@@ -112,8 +112,9 @@ class TorrentClient:
                             self.torrent_data.chunk_hash_id_map[sent_chunk_hash]
                         )
                         offset = order_number * torrent_data.chunk_size
-                        chunk = DataChunk(offset, data, sent_chunk_hash)
-                        self.load_chunk_to_memory(chunk)
+                        chunk = DataChunk(offset, sent_chunk_hash)
+                        self.write_chunk_content_to_disk(chunk, data)
+                        self.register_chunk_to_memory(chunk)
                     else:
                         break
             except ConnectionRefusedError:
@@ -132,14 +133,17 @@ class TorrentClient:
                     length_after = len(self.needed_chunks_hashes)
 
                     if needed_length > length_after:
-                        self.write_chunks_to_file()
+                        for chunk in self.owned_chunks:
+                            content = self.read_chunk_content_from_disk(chunk)
+                            self.write_chunk_content_to_disk(chunk, content)
                         self.announce_chunks_to_tracker()
                 else:
                     print("All the pieces gotten")
                     file_hash = sha1()
                     self.owned_chunks.sort(key=lambda x: x.offset)
                     for chunk in self.owned_chunks:
-                        file_hash.update(chunk.content)
+                        content = self.read_chunk_content_from_disk(chunk)
+                        file_hash.update(content)
 
                     if file_hash.hexdigest() == self.torrent_data.file_hash:
                         print("Integrity check succeeded")
@@ -178,7 +182,8 @@ class TorrentClient:
                         for chunk in self.owned_chunks
                         if chunk.hash == needed_hash
                     ][0]
-                    conn.send(needed_chunk.content)
+                    content = self.read_chunk_content_from_disk(needed_chunk)
+                    conn.send(content)
                     print(f"Sent {needed_chunk.hash} to leecher")
 
     def announce_chunks_to_tracker(self):
@@ -195,33 +200,38 @@ class TorrentClient:
             if resp.content != b"Ok":
                 print("Error:", resp.content)
 
-    def load_chunk_to_memory(self, chunk: DataChunk):
-        chunk_hash = sha1(chunk.content).hexdigest()
-        chunk.hash = chunk_hash
-        if chunk_hash in self.needed_chunks_hashes:
-            self.needed_chunks_hashes.remove(chunk_hash)
+    def register_chunk_to_memory(self, chunk: DataChunk):
+        if chunk.hash in self.needed_chunks_hashes:
+            self.needed_chunks_hashes.remove(chunk.hash)
             self.owned_chunks.append(chunk)
 
-    def write_chunk_to_disk(self, chunk: DataChunk):
-        
-
-    def write_chunks_to_file(self):
+    def write_chunk_content_to_disk(self, chunk: DataChunk, content: bytes):
         with open(self.temp_file_name, "r+b") as f:
-            for chunk in self.owned_chunks:
-                # set file cursor location to its offset
-                f.seek(chunk.offset)
-                # check if chunk exists at offset
-                data = f.read(self.torrent_data.chunk_size)
+            # set file cursor location to its offset
+            f.seek(chunk.offset)
+            # check if chunk exists at offset
+            data = f.read(self.torrent_data.chunk_size)
 
-                # reading moved the cursor, reset it before writing
-                f.seek(chunk.offset)
+            # reading moved the cursor, reset it before writing
+            f.seek(chunk.offset)
 
-                if all(byte == 0 for byte in data):
-                    written = f.write(chunk.content)
-                    print(f"{written} bytes written to offset {chunk.offset}")
+            if all(byte == 0 for byte in data):
+                written = f.write(content)
+                print(f"{written} bytes written to offset {chunk.offset}")
 
-                    with open(self.download_metadata_file_name, "a") as mf:
-                        mf.write(f"{chunk.offset}:{chunk.hash}\n")
+                with open(self.download_metadata_file_name, "a") as mf:
+                    mf.write(f"{self.temp_file_name}:{chunk.offset}:{chunk.hash}\n")
+
+    def read_chunk_content_from_disk(self, chunk: DataChunk) -> bytes:
+        with open(self.download_metadata_file_name, "r") as mf:
+            for line in mf:
+                file, _, hash = line.split(":")
+                if hash.strip() == chunk.hash:
+                    with open(file, "rb") as f:
+                        f.seek(int(chunk.offset))
+                        content = f.read(self.torrent_data.chunk_size)
+                        return content
+        raise ValueError("Chunk not found")
 
     def chunkify(self, filename: str):
         with open(filename, "rb") as f:
@@ -229,7 +239,9 @@ class TorrentClient:
             offset = 0
 
             while buffer := f.read(self.torrent_data.chunk_size):
-                chunk = DataChunk(offset, buffer, sha1(buffer).hexdigest())
+                chunk = DataChunk(offset, sha1(buffer).hexdigest())
+                with open(self.download_metadata_file_name, "a") as mf:
+                    mf.write(f"{self.ready_file_name}:{chunk.offset}:{chunk.hash}\n")
                 it += 1
                 offset = it * self.torrent_data.chunk_size
 
@@ -245,7 +257,7 @@ class TorrentClient:
         if os.path.exists(self.ready_file_name):
             # chunkify the existing file and only start seeding
             for chunk in self.chunkify(self.torrent_data.file_name):
-                client.load_chunk_to_memory(chunk)
+                client.register_chunk_to_memory(chunk)
             self.announce_chunks_to_tracker()
 
             seeding_thread.start()
@@ -256,13 +268,12 @@ class TorrentClient:
 
                 with open(self.download_metadata_file_name, "r") as f:
                     for line in f:
-                        offset, hash = line.split(":")
+                        file, offset, hash = line.split(":")
                         offset = int(offset)
-                        with open(self.temp_file_name, "rb") as tf:
+                        with open(file, "rb") as tf:
                             tf.seek(offset)
-                            content = tf.read(self.torrent_data.chunk_size)
-                            client.load_chunk_to_memory(
-                                DataChunk(offset, content, hash)
+                            client.register_chunk_to_memory(
+                                DataChunk(offset, hash)
                             )
             else:
                 with open(self.temp_file_name, "wb") as f:
