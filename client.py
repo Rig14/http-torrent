@@ -148,6 +148,12 @@ class TorrentClient:
                     if file_hash.hexdigest() == self.torrent_data.file_hash:
                         print("Integrity check succeeded")
                         os.rename(self.temp_file_name, self.ready_file_name)
+                        os.remove(self.download_metadata_file_name)
+                        
+                        for chunk in self.chunkify(self.torrent_data.file_name):
+                            client.register_chunk_to_memory(chunk)
+                        self.announce_chunks_to_tracker()
+
 
                     else:
                         print(
