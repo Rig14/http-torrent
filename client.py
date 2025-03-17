@@ -95,40 +95,6 @@ class TorrentClient:
 
             yield peers
 
-    def fetch_chunk_from_peer(self, peer: Peer):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            try:
-                print(f"Fetching peer {peer.peer_host}:{peer.peer_port}")
-                s.connect((peer.peer_host, peer.peer_port))
-                
-                while True:
-                    # give me a random chunk from peer's chunk list
-                    chunk_hash = random.choice(peer.peer_chunks)
-                    s.send(chunk_hash.encode())
-
-                    fragments = []
-                    while True:
-                        data = s.recv(torrent_data.chunk_size)
-                        if not data:
-                            break
-                        fragments.append(data)
-                    complete = b"".join(fragments)
-                    
-                    if len(complete) == torrent_data.chunk_size:
-                        # verify the sent chunk hash
-                        sent_chunk_hash = sha1(complete).hexdigest()
-                        order_number = int(
-                            self.torrent_data.chunk_hash_id_map[sent_chunk_hash]
-                        )
-                        offset = order_number * torrent_data.chunk_size
-                        chunk = DataChunk(offset, sent_chunk_hash)
-                        self.write_chunk_content_to_disk(chunk, complete)
-                        self.register_chunk_to_memory(chunk)
-                    else:
-                        break
-            except ConnectionRefusedError:
-                print(f"Peer {peer} refused connection")
-
     def fetch_from_peers(self):
         while True:
             try:
@@ -142,9 +108,6 @@ class TorrentClient:
                     length_after = len(self.needed_chunks_hashes)
 
                     if needed_length > length_after:
-                        for chunk in self.owned_chunks:
-                            content = self.read_chunk_content_from_disk(chunk)
-                            self.write_chunk_content_to_disk(chunk, content)
                         self.announce_chunks_to_tracker()
                 else:
                     print("All the pieces gotten")
@@ -176,6 +139,42 @@ class TorrentClient:
                 print(f"Error in fetch thread: {e}")
                 time.sleep(10)
 
+    def fetch_chunk_from_peer(self, peer: Peer):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                print(f"Fetching peer {peer.peer_host}:{peer.peer_port}")
+                s.connect((peer.peer_host, peer.peer_port))
+                while True:
+                    # give me a random chunk from peer's chunk list
+                    chunk_hash = random.choice(peer.peer_chunks)
+                    s.sendall(chunk_hash.encode())
+
+                    received = 0
+                    fragments = []
+                    while received < self.torrent_data.chunk_size:
+                        data = s.recv(self.torrent_data.chunk_size) 
+                        if not data:
+                            break
+                        fragments.append(data)
+                    complete = b"".join(fragments)
+                    if len(complete) > 0:
+                        print("Received", len(complete), "bytes of data")
+                        sent_chunk_hash = sha1(complete).hexdigest()
+                        print(sent_chunk_hash, chunk_hash)
+                        if sent_chunk_hash == chunk_hash:
+                            order_number = int(
+                                self.torrent_data.chunk_hash_id_map[sent_chunk_hash]
+                            )
+                            offset = order_number * torrent_data.chunk_size
+                            chunk = DataChunk(offset, sent_chunk_hash)
+                            self.write_chunk_content_to_disk(chunk, complete)
+                            self.register_chunk_to_memory(chunk)
+                    else:
+                        break
+            except ConnectionRefusedError:
+                print(f"Peer {peer} refused connection")
+
+                
     def seed_chunks(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.bind((self.client_ip, self.seed_port))
@@ -199,7 +198,9 @@ class TorrentClient:
                         if chunk.hash == needed_hash
                     ][0]
                     content = self.read_chunk_content_from_disk(needed_chunk)
-                    conn.send(content)
+                    if len(content) != 32000:
+                        print("odd")
+                    conn.sendall(content)
                     print(f"Sent {needed_chunk.hash} to leecher")
 
     def announce_chunks_to_tracker(self):
@@ -305,7 +306,7 @@ class TorrentClient:
             fetching_thread.start()
         try:
             while True:
-                time.sleep(0.01)  # Sleep to avoid high CPU usage
+                time.sleep(0.1)  # Sleep to avoid high CPU usage
         except KeyboardInterrupt:
             print("Shutting down client...")
 

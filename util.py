@@ -14,18 +14,18 @@ def get_ip():
         s.close()
     return IP
 
-def find_free_port():
+def find_free_port() -> int:
     start_range = 26000
     end_range = 26100
 
     for port in range(start_range, end_range):
-        # print("Trying port", port)
+        print("Trying port", port)
         with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
             try:
                 s.bind(('', port))
-            # s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                s.close()
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 return port
             except OSError:
-                continue
-            # return s.getsockname()[1]
+                continue    
+
+    raise IOError(f"No port free in range {start_range}-{end_range}")
