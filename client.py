@@ -105,14 +105,23 @@ class TorrentClient:
                     # give me a random chunk from peer's chunk list
                     chunk_hash = random.choice(peer.peer_chunks)
                     s.send(chunk_hash.encode())
-                    data = s.recv(torrent_data.chunk_size)
-                    if data:
 
+                    fragments = []
+                    while True:
+                        data = s.recv(torrent_data.chunk_size)
+                        if not data:
+                            break
+                        fragments.append(data)
+                    complete = b"".join(fragments)
+                    
+                    if len(complete) == torrent_data.chunk_size:
+                        # verify the sent chunk hash
+                        sent_chunk_hash = sha1(complete).hexdigest()
                         order_number = int(
-                            self.torrent_data.chunk_hash_id_map[chunk_hash]
+                            self.torrent_data.chunk_hash_id_map[sent_chunk_hash]
                         )
                         offset = order_number * torrent_data.chunk_size
-                        chunk = DataChunk(offset, chunk_hash)
+                        chunk = DataChunk(offset, sent_chunk_hash)
                         self.write_chunk_content_to_disk(chunk, data)
                         self.register_chunk_to_memory(chunk)
                     else:
