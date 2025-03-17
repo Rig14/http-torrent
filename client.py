@@ -333,7 +333,7 @@ class TorrentClient:
                 "total_chunks": len(self.torrent_data.chunk_hashes),
                 "chunk_size": self.torrent_data.chunk_size
             }
-            requests.post("http://localhost:5000/metrics", json=payload)
+            requests.post(f"http://{self.client_ip}:5000/metrics", json=payload)
 
             time.sleep(3)
 

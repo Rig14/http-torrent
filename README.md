@@ -10,5 +10,9 @@ python tracker.py 6969
 ```bash
 flask --app metric_server.py run --debug
 ```
+on different port and host:
+```bash
+flask --app metric_server.py run --debug -h :host -p :port
+```
 
 
