@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title>Torrent Client Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 15px;
+            background-color: #f0f0f0;
+            font-size: 14px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.5rem;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            font-size: 0.9rem;
+        }
+
+        .refresh-rate {
+            display: flex;
+            align-items: center;
+        }
+
+        .refresh-rate label {
+            margin-right: 10px;
+        }
+
+        .status {
+            color: #666;
+        }
+
+        .clients-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 12px;
+        }
+
+        .client-card {
+            background-color: white;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            padding: 12px;
+            transition: transform 0.2s;
+        }
+
+        .client-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+        }
+
+        .client-id {
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: #333;
+            word-break: break-all;
+            font-size: 0.9rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .progress-container {
+            margin-bottom: 8px;
+        }
+
+        .progress-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            margin-bottom: 2px;
+        }
+
+        .progress-bar {
+            height: 8px;
+            background-color: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4caf50, #8bc34a);
+            border-radius: 4px;
+            transition: width 0.5s ease-in-out;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 6px;
+            font-size: 0.8rem;
+        }
+
+        .stat-item {
+            padding: 4px;
+            background-color: #f5f5f5;
+            border-radius: 3px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-weight: bold;
+            color: #2196f3;
+        }
+
+        .stat-label {
+            font-size: 0.7rem;
+            color: #666;
+        }
+
+        .no-clients {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            grid-column: 1 / -1;
+        }
+
+        @media (max-width: 600px) {
+            .controls {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }
+
+            .clients-container {
+                grid-template-columns: repeat(auto-fill, minmax(100%, 1fr));
+            }
+        }
+    </style>
+</head>
+<body>
+<h1>Torrent Client Dashboard</h1>
+
+<div class="controls">
+    <div class="refresh-rate">
+        <label for="refresh-interval">Refresh:</label>
+        <select id="refresh-interval">
+            <option value="3000">3s</option>
+            <option selected value="5000">5s</option>
+            <option value="10000">10s</option>
+            <option value="30000">30s</option>
+        </select>
+    </div>
+    <div class="status">Last updated: Never</div>
+</div>
+
+<div class="clients-container" id="clients-container">
+    <div class="no-clients">Loading client data...</div>
+</div>
+
+<script>
+    // DOM elements
+    const clientsContainer = document.getElementById('clients-container');
+    const refreshIntervalSelect = document.getElementById('refresh-interval');
+    const statusElement = document.querySelector('.status');
+
+    // State
+    let clients = [];
+    let refreshIntervalId = null;
+    let refreshInterval = parseInt(refreshIntervalSelect.value);
+
+    // Initialize
+    fetchClients();
+    startRefreshInterval();
+
+    // Event listeners
+    refreshIntervalSelect.addEventListener('change', () => {
+        refreshInterval = parseInt(refreshIntervalSelect.value);
+        startRefreshInterval();
+    });
+
+    // Functions
+    function startRefreshInterval() {
+        if (refreshIntervalId) {
+            clearInterval(refreshIntervalId);
+        }
+
+        refreshIntervalId = setInterval(fetchClients, refreshInterval);
+    }
+
+    function fetchClients() {
+        fetch('/metrics')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                updateClients(data);
+            })
+            .catch(error => {
+                console.error('Error fetching client data:', error);
+                statusElement.textContent = 'Error: Failed to fetch data';
+            });
+
+        // Update status
+        const now = new Date();
+        statusElement.textContent = `Last updated: ${now.toLocaleTimeString()}`;
+    }
+
+    function updateClients(newClients) {
+        clients = newClients;
+        renderClients();
+    }
+
+    function formatSize(bytes) {
+        if (bytes === 0) return '0 B';
+
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(1024));
+
+        return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    function renderClients() {
+        if (!clients.length) {
+            clientsContainer.innerHTML = '<div class="no-clients">No clients found</div>';
+            return;
+        }
+
+        clientsContainer.innerHTML = '';
+
+        clients.forEach(client => {
+            const downloadProgress = (client.downloaded_chunks / client.total_chunks) * 100;
+            const downloadComplete = client.downloaded_chunks >= client.total_chunks;
+
+            // Calculate sizes
+            const chunkSize = client.chunk_size || 0;
+            const downloadedSize = client.downloaded_chunks * chunkSize;
+            const uploadedSize = client.uploaded_chunks * chunkSize;
+            const totalSize = client.total_chunks * chunkSize;
+
+            const clientCard = document.createElement('div');
+            clientCard.className = 'client-card';
+
+            clientCard.innerHTML = `
+                    <div class="client-id" title="${client.client}">${client.client}</div>
+
+                    <div class="progress-container">
+                        <div class="progress-label">
+                            <span>Download</span>
+                            <span>${downloadComplete ? 'Complete' : Math.round(downloadProgress) + '%'}</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${downloadProgress}%"></div>
+                        </div>
+                    </div>
+
+                    <div class="stats">
+                        <div class="stat-item">
+                            <div class="stat-value">${formatSize(downloadedSize)}</div>
+                            <div class="stat-label">Downloaded</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">${formatSize(uploadedSize)}</div>
+                            <div class="stat-label">Uploaded</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">${formatSize(totalSize)}</div>
+                            <div class="stat-label">Total Size</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">${(client.uploaded_chunks / Math.max(1, client.downloaded_chunks)).toFixed(2)}</div>
+                            <div class="stat-label">Ratio</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">${client.downloaded_chunks}</div>
+                            <div class="stat-label">Chunks Down</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">${client.uploaded_chunks}</div>
+                            <div class="stat-label">Chunks Up</div>
+                        </div>
+                    </div>
+                `;
+
+            clientsContainer.appendChild(clientCard);
+        });
+    }
+</script>
+</body>
+</html>

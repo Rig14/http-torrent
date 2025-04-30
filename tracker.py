@@ -1,15 +1,25 @@
 import json
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from random import shuffle
 from threading import Thread
 import urllib.parse as urlparse
 import sys
 
+import requests
+
 from util import get_ip
+
 
 class Client:
     host: str
     port: str
+
+    def __hash__(self):
+        return hash((self.host, self.port))
+
+    def __eq__(self, other):
+        return self.host == other.host and self.port == other.port
 
 
 class Tracker:
@@ -20,6 +30,8 @@ class Tracker:
 
         Thread(target=self.start_http_listener, daemon=True).start()
         print(f"Tracker server started on {self.host}:{self.port}")
+
+        Thread(target=self.clients_health_check, daemon=True).start()
 
         if serve_forever:
             while True:
@@ -45,7 +57,7 @@ class Tracker:
 
                         response = []
                         for h in hashes:
-                            if h not in tracker.chunk_client_registry: raise Exception(f"Chunk ({h}) not registered in tracker")
+                            if h not in tracker.chunk_client_registry: raise Exception(f"Chunk ({h}) is not tracked by the tracker")
                         
                             clients = tracker.chunk_client_registry.get(h)
                             shuffle(clients)
@@ -71,7 +83,6 @@ class Tracker:
                             } for x in response
                         ])
                         status = 200
-
 
                     except Exception as e:
                         print("Could not parse chunk request", e)
@@ -102,20 +113,18 @@ class Tracker:
                         client.port = j["client_port"]
 
                         for h in hashes:
-                            # if h not in tracker.chunk_client_registry: raise Exception(f"Chunk ({h}) not registered in tracker")
                             if h not in tracker.chunk_client_registry:
                                 tracker.chunk_client_registry[h] = [client]
                             else:
                                 clients = tracker.chunk_client_registry.get(h)
                                 clients.append(client)
-                            print(tracker.chunk_client_registry)
 
                         content = "Ok"
                         status = 200
                     except Exception as e:
-                        content = f"Error parsing torrent file from request body {e}"
+                        content = f"Error passing from request body {e}"
                         status = 400
-                        print("Error parsing torrent file from request body", e)
+                        print("Error parsing request body", e)
 
                 # SENDING
                 self.send_response(status)
@@ -123,10 +132,28 @@ class Tracker:
                 self.end_headers()
                 self.wfile.write(content.encode("UTF-8"))
 
+
         server = HTTPServer((self.host, self.port), Handler)
         server.serve_forever()
 
+    def clients_health_check(self):
+        while True:
+            clients_to_check = set()
+            for hashes in self.chunk_client_registry.values():
+                for client in hashes:
+                    clients_to_check.add(client)
+
+            for client in clients_to_check:
+                try:
+                    response = requests.get(f"http://{client.host}:{client.port}/ping")
+                    response.raise_for_status()
+                except Exception as e:
+                    print(f"Client {client.host}:{client.port} is not reachable [reason {e}]. Removing.")
+                    for hashes in self.chunk_client_registry.values():
+                        if client in hashes:
+                            hashes.remove(client)
+            time.sleep(5)
 
 if __name__ == "__main__":
-    port = int(sys.argv[1])
+    port = 5000
     Tracker(port, serve_forever=True)
