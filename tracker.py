@@ -27,6 +27,7 @@ class Tracker:
         self.host: str = get_ip()
         self.port: int = port
         self.chunk_client_registry: dict[str, list[Client]] = {}
+        self.dht_registry: list[Client] = []
 
         Thread(target=self.start_http_listener, daemon=True).start()
         print(f"Tracker server started on {self.host}:{self.port}")
@@ -41,6 +42,34 @@ class Tracker:
         tracker = self
 
         class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                parsed_url = urlparse.urlparse(self.path)
+
+                content: str = "404 Not Found."
+                status: int = 404
+                headers: list[tuple[str, str]] = []
+
+                if parsed_url.path == "/dht":
+                    # message is in json form [ {host: host, port: port}, ...]
+                    try:
+                        content = json.dumps([
+                            {
+                                "host": x.host,
+                                "port": x.port
+                            } for x in tracker.dht_registry
+                        ])
+                        status = 200
+                    except Exception as e:
+                        print("Could not parse dht request", e)
+                        status = 400
+                        content = f"Could not parse dht request. {e}"
+
+                # SENDING
+                self.send_response(status)
+                for header in headers: self.send_header(header[0], header[1])
+                self.end_headers()
+                self.wfile.write(content.encode("UTF-8"))
+
             def do_POST(self):
                 parsed_url = urlparse.urlparse(self.path)
 
@@ -88,6 +117,23 @@ class Tracker:
                         print("Could not parse chunk request", e)
                         status = 400
                         content = f"Could not parse chunk request. {e}"
+                elif parsed_url.path == "/dht":
+                    # message is in json format {host: host, port: port}
+                    try:
+                        j = json.loads(request_body)
+                        client = Client()
+                        client.host = j["host"]
+                        client.port = j["port"]
+
+                        if client not in tracker.dht_registry:
+                            tracker.dht_registry.append(client)
+
+                        content = "Ok"
+                        status = 200
+                    except Exception as e:
+                        print("Could not parse dht request", e)
+                        status = 400
+                        content = f"Could not parse dht request. {e}"
 
                 # SENDING
                 self.send_response(status)

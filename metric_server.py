@@ -1,4 +1,5 @@
 import time
+from threading import Thread
 
 from flask import Flask, render_template, request, jsonify
 
@@ -81,14 +82,19 @@ def post_metrics():
 
     last_updated[client] = time.time()
 
-    for k, v in last_updated.items():
-        if time.time() - v > 15:
-            del metrics[k]
-            del last_updated[k]
-
     return "Ok"
 
+
+def update_clients_daemon():
+    while True:
+        for k, v in last_updated.items():
+            if time.time() - v > 15:
+                del metrics[k]
+                del last_updated[k]
+        time.sleep(1)
+
 if __name__ == "__main__":
+    Thread(target=update_clients_daemon, daemon=True).start()
     app.run(port=8080)
 
 
