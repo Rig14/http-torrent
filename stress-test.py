@@ -29,7 +29,7 @@ atexit.register(cleanup)
 
 
 start_subprocess(["python", "metric_server.py"])
-start_subprocess(["flask", "--app", "metric_server.py", "run", "--debug", "-h", "192.168.2.11", "-p", "5000"])
+start_subprocess(["flask", "--app", "metric_server.py", "run", "--debug", "-h", "10.224.15.245", "-p", "5000"])
 time.sleep(1)
 
 print("Starting tracker")
@@ -42,7 +42,7 @@ start_subprocess(["python", "client.py", "torrent.json"])
 
 time.sleep(10)
 print("Starting leechers")
-for i in range(5):
+for i in range(30):
     time.sleep(3)
     tmp_dir = f"/tmp/http-torrent/{i}"
     os.makedirs(tmp_dir)
@@ -53,7 +53,7 @@ for i in range(5):
 
 time.sleep(20)
 
-for p in processes[2:3]:
+for p in processes[2:10]:
     clean(p)
 
 # Keep the main process running

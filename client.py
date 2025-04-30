@@ -122,7 +122,7 @@ class TorrentClient:
                         print("Integrity check succeeded")
                         os.rename(self.temp_file_name, self.ready_file_name)
                         os.remove(self.download_metadata_file_name)
-                        
+
                         for chunk in self.chunkify(self.torrent_data.file_name):
                             client.register_chunk_to_memory(chunk)
                         self.announce_chunks_to_tracker()
@@ -152,7 +152,7 @@ class TorrentClient:
                     received = 0
                     fragments = []
                     while received < self.torrent_data.chunk_size:
-                        data = s.recv(self.torrent_data.chunk_size) 
+                        data = s.recv(self.torrent_data.chunk_size)
                         if not data:
                             break
                         fragments.append(data)
@@ -160,7 +160,7 @@ class TorrentClient:
                     if len(complete) > 0:
                         print("Received", len(complete), "bytes of data")
                         sent_chunk_hash = sha1(complete).hexdigest()
-                        
+
                         if sent_chunk_hash == chunk_hash:
                             order_number = int(
                                 self.torrent_data.chunk_hash_id_map[sent_chunk_hash]
@@ -174,11 +174,10 @@ class TorrentClient:
             except ConnectionRefusedError:
                 print(f"Peer {peer} refused connection")
 
-                
     def seed_chunks(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.bind((self.client_ip, self.seed_port))
-            
+
             s.listen()
             print(f"Seeding chunks on {self.client_ip}:{self.seed_port}")
 
@@ -187,16 +186,15 @@ class TorrentClient:
 
                 with conn:
                     print("Seeder connected by", addr)
-                   
-                    # msg_type_length = 3
+
                     message = conn.recv(1024).decode()
-                    
+
                     if message.startswith("GET"):
                         # healthcheck
                         print("Tracker sent health request")
                         response = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK"
                         conn.sendall(response)
-                        
+
                         conn.close()
                         continue
 
@@ -212,7 +210,7 @@ class TorrentClient:
                     ][0]
                     content = self.read_chunk_content_from_disk(needed_chunk)
                     conn.sendall(content)
-                    self.uploaded_chunks +=1
+                    self.uploaded_chunks += 1
                     print(f"Sent {needed_chunk.hash} to leecher")
 
     def announce_chunks_to_tracker(self):
@@ -302,9 +300,7 @@ class TorrentClient:
                         offset = int(offset)
                         with open(file, "rb") as tf:
                             tf.seek(offset)
-                            client.register_chunk_to_memory(
-                                DataChunk(offset, hash)
-                            )
+                            client.register_chunk_to_memory(DataChunk(offset, hash))
             else:
                 with open(self.temp_file_name, "wb") as f:
                     f.truncate(self.torrent_data.file_size)
@@ -331,11 +327,12 @@ class TorrentClient:
                 "downloaded_chunks": len(self.owned_chunks),
                 "uploaded_chunks": self.uploaded_chunks,
                 "total_chunks": len(self.torrent_data.chunk_hashes),
-                "chunk_size": self.torrent_data.chunk_size
+                "chunk_size": self.torrent_data.chunk_size,
             }
             requests.post(f"http://{self.client_ip}:5000/metrics", json=payload)
 
             time.sleep(3)
+
 
 if __name__ == "__main__":
     torrent_file_name = sys.argv[1]
