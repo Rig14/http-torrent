@@ -253,11 +253,12 @@ class Client:
             response.raise_for_status()
             tracker_providers = response.json()
             for provider in tracker_providers:
-                host, port = provider.split(":")
-                provider = Provider()
-                provider.client_host = host
-                provider.client_port = int(port)
-                provider.hashes = hashes
+                p = Provider()
+                p.client_host = provider["client_host"]
+                p.client_port = provider["client_port"]
+                p.hashes = provider["hash_list"]
+                providers.append(p)
+
         except Exception as e:
             print(f"Error getting providers from tracker: {e}")
             # Get providers from DHT if enabled
