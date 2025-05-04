@@ -270,13 +270,23 @@ class Client:
                         if not result: continue
 
                         dht_providers = json.loads(result)
-                        for provider in dht_providers:
-                            host, port = provider.split(":")
-                            provider = Provider()
-                            provider.client_host = host
-                            provider.client_port = int(port)
-                            provider.hashes = [hash]
-                            providers.append(provider)
+                        shuffle(dht_providers)
+                        provider_ip, provider_port = dht_providers[0].split(":")
+
+                        # check if the provider is already in the list
+                        has_ip = False
+                        for provider in providers:
+                            if provider.client_host == provider_ip and provider.client_port == int(provider_port):
+                                provider.hashes.append(hash)
+                                has_ip = True
+                                continue
+                        if has_ip: continue
+
+                        p = Provider()
+                        p.client_host = provider_ip
+                        p.client_port = int(provider_port)
+                        p.hashes = [hash]
+                        providers.append(p)
                     except Exception as e:
                         print(f"Error getting providers from DHT for hash {hash}: {e}")
 
