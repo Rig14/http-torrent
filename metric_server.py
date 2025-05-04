@@ -22,6 +22,7 @@ class ClientMetrics:
     chunk_size: int
     dht_peers: int
     dht_enabled: bool
+    tracker_status_up: bool
 
 
 metrics: dict[Client, ClientMetrics] = {}
@@ -41,7 +42,8 @@ def get_metrics():
             "total_chunks": 100,
             "chunk_size": 128,
             "dht_peers": 10,
-            "dht_enabled": true
+            "dht_enabled": true,
+            "tracker_status_up": true
         },
         ...
     ]
@@ -55,7 +57,8 @@ def get_metrics():
         "total_chunks": metrics[client].total_chunks,
         "chunk_size": metrics[client].chunk_size,
         "dht_peers": metrics[client].dht_peers,
-        "dht_enabled": metrics[client].dht_enabled
+        "dht_enabled": metrics[client].dht_enabled,
+        "tracker_status_up": metrics[client].tracker_status_up
     } for client in metrics])
 
 ######################
@@ -91,6 +94,7 @@ def post_metrics():
     metrics[client].chunk_size = j["chunk_size"]
     metrics[client].dht_peers = j["dht_peers"]
     metrics[client].dht_enabled = j["dht_enabled"]
+    metrics[client].tracker_status_up = j["tracker_status_up"]
 
     last_updated[client] = time.time()
 

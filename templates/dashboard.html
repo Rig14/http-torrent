@@ -112,22 +112,35 @@
             const clientCard = document.createElement('div');
             clientCard.className = 'bg-white rounded shadow p-3 hover:shadow-md transition-transform duration-200 hover:-translate-y-1';
 
-            let dhtIndicator = '';
+            let statusIndicators = '';
+
+            // DHT Indicator
             if (client.dht_enabled) {
-                dhtIndicator = `
-                        <div class="absolute top-3 right-3 flex items-center">
-                            <span class="inline-flex items-center bg-green-100 text-green-800 text-xs font-medium px-2 py-1 rounded-full">
-                                <span class="w-2 h-2 bg-green-500 rounded-full mr-1"></span>
-                                DHT: ${client.dht_peers}
-                            </span>
-                        </div>
-                    `;
+                statusIndicators += `
+                    <span class="inline-flex items-center bg-green-100 text-green-800 text-xs font-medium px-2 py-1 rounded-full mr-1">
+                        <span class="w-2 h-2 bg-green-500 rounded-full mr-1"></span>
+                        DHT: ${client.dht_peers}
+                    </span>
+                `;
             }
+
+            // Tracker Status Indicator
+            const trackerStatusColor = client.tracker_status_up ? 'green' : 'red';
+            const trackerStatusText = client.tracker_status_up ? 'Online' : 'Offline';
+            statusIndicators += `
+                <span class="inline-flex items-center bg-${trackerStatusColor}-100 text-${trackerStatusColor}-800 text-xs font-medium px-2 py-1 rounded-full">
+                    <span class="w-2 h-2 bg-${trackerStatusColor}-500 rounded-full mr-1"></span>
+                    Tracker: ${trackerStatusText}
+                </span>
+            `;
 
             clientCard.innerHTML = `
                     <div class="relative">
                         <div class="font-bold mb-2 text-gray-800 truncate" title="${client.client}">${client.client}</div>
-                        ${dhtIndicator}
+
+                        <div class="absolute top-3 right-3 flex items-center flex-wrap gap-1">
+                            ${statusIndicators}
+                        </div>
 
                         <div class="text-xs text-gray-600 mb-1">
                             ${client.client}

@@ -43,6 +43,7 @@ class Client:
         self.dht_port = find_free_port() if dht_enabled else None
         self.dht_server: KademliaDHT | None = None
         self.uploaded_chunks: int = 0
+        self.tracker_status_up = True
         self.id: str = uuid4().hex
         self.temp_path: str = f"/tmp/http-torrent/{self.id}"
         self._running = False
@@ -259,8 +260,11 @@ class Client:
                 p.hashes = provider["hash_list"]
                 providers.append(p)
 
+            self.tracker_status_up = True
+
         except Exception as e:
             print(f"Error getting providers from tracker: {e}")
+            self.tracker_status_up = False
             # Get providers from DHT if enabled
             if self.dht_enabled and self.dht_server:
                 print("Getting providers from DHT network...")
@@ -331,7 +335,8 @@ class Client:
                     "total_chunks": len(self.torrent_file_details.chunks),
                     "chunk_size": self.torrent_file_details.chunkSize,
                     "dht_peers": self.dht_server.get_peer_count() if self.dht_enabled else 0,
-                    "dht_enabled": self.dht_enabled
+                    "dht_enabled": self.dht_enabled,
+                    "tracker_status_up": self.tracker_status_up
                 }
                 requests.post("http://localhost:8080/metrics", json=payload)
             except Exception as e:
