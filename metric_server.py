@@ -20,6 +20,8 @@ class ClientMetrics:
     uploaded_chunks: int
     total_chunks: int
     chunk_size: int
+    dht_peers: int
+    dht_enabled: bool
 
 
 metrics: dict[Client, ClientMetrics] = {}
@@ -37,7 +39,9 @@ def get_metrics():
             "downloaded_chunks": 10,
             "uploaded_chunks": 20,
             "total_chunks": 100,
-            "chunk_size": 128
+            "chunk_size": 128,
+            "dht_peers": 10,
+            "dht_enabled": true
         },
         ...
     ]
@@ -49,7 +53,9 @@ def get_metrics():
         "downloaded_chunks": metrics[client].downloaded_chunks,
         "uploaded_chunks": metrics[client].uploaded_chunks,
         "total_chunks": metrics[client].total_chunks,
-        "chunk_size": metrics[client].chunk_size
+        "chunk_size": metrics[client].chunk_size,
+        "dht_peers": metrics[client].dht_peers,
+        "dht_enabled": metrics[client].dht_enabled
     } for client in metrics])
 
 ######################
@@ -65,7 +71,9 @@ def post_metrics():
         "downloaded_chunks": 10,
         "uploaded_chunks": 20,
         "total_chunks": 100,
-        "chunk_size": 128
+        "chunk_size": 128,
+        "dht_peers": 10
+        "dht_enabled": true
     }
     """
     j = request.get_json()
@@ -81,6 +89,8 @@ def post_metrics():
     metrics[client].uploaded_chunks = j["uploaded_chunks"]
     metrics[client].total_chunks = j["total_chunks"]
     metrics[client].chunk_size = j["chunk_size"]
+    metrics[client].dht_peers = j["dht_peers"]
+    metrics[client].dht_enabled = j["dht_enabled"]
 
     last_updated[client] = time.time()
 
