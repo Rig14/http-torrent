@@ -42,6 +42,8 @@ def get_metrics():
         ...
     ]
     """
+    update_clients()
+
     return jsonify([{
         "client": f"{client.client_host}:{client.client_port}",
         "downloaded_chunks": metrics[client].downloaded_chunks,
@@ -85,16 +87,13 @@ def post_metrics():
     return "Ok"
 
 
-def update_clients_daemon():
-    while True:
-        for k, v in last_updated.items():
-            if time.time() - v > 15:
-                del metrics[k]
-                del last_updated[k]
-        time.sleep(1)
+def update_clients():
+    for k, v in last_updated.items():
+        if time.time() - v > 15:
+            del metrics[k]
+            del last_updated[k]
 
 if __name__ == "__main__":
-    Thread(target=update_clients_daemon, daemon=True).start()
     app.run(port=8080)
 
 
