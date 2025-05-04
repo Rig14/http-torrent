@@ -40,6 +40,26 @@ class KademliaDHT:
         """Stop the Kademlia server."""
         self.server.stop()
 
+    def get_peer_count(self) -> int:
+        """
+        Get the number of connected peers in the Kademlia network.
+
+        Returns:
+            Number of peers currently connected to this node
+        """
+        # The Kademlia protocol maintains a routing table of known nodes
+        # We can use the protocol's routing table to determine connected peers
+        if not hasattr(self.server, 'protocol') or self.server.protocol is None:
+            return 0
+
+        # The protocol's routing table contains k-buckets with peers
+        # Count the total number of peers across all buckets
+        peer_count = 0
+        for bucket in self.server.protocol.router.buckets:
+            peer_count += len(bucket.nodes)
+
+        return peer_count
+
     def get_node_address(self) -> Tuple[str, int]:
         """
         Get this node's network address information that can be shared with other nodes.

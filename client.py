@@ -318,7 +318,9 @@ class Client:
                     "downloaded_chunks": len(self.available_chunks),
                     "uploaded_chunks": self.uploaded_chunks,
                     "total_chunks": len(self.torrent_file_details.chunks),
-                    "chunk_size": self.torrent_file_details.chunkSize
+                    "chunk_size": self.torrent_file_details.chunkSize,
+                    "dht_peers": self.dht_server.get_peer_count() if self.dht_enabled else 0,
+                    "dht_enabled": self.dht_enabled
                 }
                 requests.post("http://localhost:8080/metrics", json=payload)
             except Exception as e:
