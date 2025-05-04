@@ -177,7 +177,7 @@ class Client:
                     
                     providers = await self.get_providers_for_hashes(missing_hashes)
                     for provider in providers:
-                        self.download_from_provider(provider)
+                        await self.download_from_provider(provider)
                 else:
                     print("All chunks downloaded. Seeding...")
                     if not file_assembled:
@@ -267,15 +267,16 @@ class Client:
                 for hash in hashes:
                     try:
                         result = await self.dht_server.get(hash)
-                        if result:
-                            dht_providers = json.loads(result)
-                            for provider in dht_providers:
-                                host, port = provider.split(":")
-                                provider = Provider()
-                                provider.client_host = host
-                                provider.client_port = int(port)
-                                provider.hashes = [hash]
-                                providers.append(provider)
+                        if not result: continue
+
+                        dht_providers = json.loads(result)
+                        for provider in dht_providers:
+                            host, port = provider.split(":")
+                            provider = Provider()
+                            provider.client_host = host
+                            provider.client_port = int(port)
+                            provider.hashes = [hash]
+                            providers.append(provider)
                     except Exception as e:
                         print(f"Error getting providers from DHT for hash {hash}: {e}")
 
@@ -341,7 +342,7 @@ class Client:
         """Get list of missing chunk hashes"""
         return list(set([x.hash for x in self.torrent_file_details.chunks]) - set(self.available_chunks))
 
-    def download_from_provider(self, provider: Provider) -> None:
+    async def download_from_provider(self, provider: Provider) -> None:
         """Download chunks from a provider"""
         try:
             print(f"Downloading {len(provider.hashes)} chunks from provider at {provider.client_host}:{provider.client_port}.")
@@ -359,6 +360,19 @@ class Client:
 
         except Exception as e:
             print(f"Error downloading chunks from provider: {e}")
+
+            if self.dht_enabled:
+                print("Removing broken hash provider from DHT network...")
+                for hash in provider.hashes:
+                    try:
+                        result = await self.dht_server.get(hash)
+                        if not result: continue
+
+                        dht_providers = json.loads(result)
+                        dht_providers.remove(f"{provider.client_host}:{provider.client_port}")
+                        await self.dht_server.set(hash, json.dumps(dht_providers))
+                    except Exception as e:
+                        print(f"Error removing provider from DHT for hash {hash}: {e}")
 
 async def main():
     with open("torrent.json", "r") as f:
