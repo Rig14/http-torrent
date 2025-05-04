@@ -102,6 +102,8 @@ class Client:
         print("DHT initialization complete")
 
     def _start_http_server(self):
+        client_class = self
+
         """Start the HTTP server in a separate thread"""
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self):
@@ -116,12 +118,12 @@ class Client:
                         j = json.loads(request_body)
                         if not isinstance(j, list): raise Exception("Invalid request body")
                         if not all([isinstance(x, str) for x in j]): raise Exception("Invalid request body")
-                        if not all([x in self.available_chunks for x in j]): 
+                        if not all([x in client_class.available_chunks for x in j]):
                             raise Exception("Invalid request. I dont have your chunks :(")
 
                         chunks = []
                         for chunk_hash in j:
-                            with open(f"{self.temp_path}/{chunk_hash}", "rb") as f:
+                            with open(f"{client_class.temp_path}/{chunk_hash}", "rb") as f:
                                 file_content = f.read()
                                 chunks.append({
                                     "hash": chunk_hash,
@@ -130,7 +132,7 @@ class Client:
 
                         content = json.dumps(chunks)
                         status = 200
-                        self.uploaded_chunks += len(chunks)
+                        client_class.uploaded_chunks += len(chunks)
                     except Exception as e:
                         content = f"400 Bad Request: {e}"
                         print("Error parsing request body", e)
@@ -161,6 +163,8 @@ class Client:
 
     async def main_loop(self):
         """Main client loop for downloading and sharing chunks"""
+        file_assembled = False
+
         while self._running:
             try:
                 if len(self.available_chunks) > 0:
@@ -176,8 +180,10 @@ class Client:
                         self.download_from_provider(provider)
                 else:
                     print("All chunks downloaded. Seeding...")
-                    await self._assemble_file()
-                    break
+                    if not file_assembled:
+                        print("Assembling file...")
+                        file_assembled = True
+                        await self._assemble_file()
 
                 await asyncio.sleep(5)
             except Exception as e:
@@ -241,28 +247,36 @@ class Client:
                 "http://" + self.torrent_file_details.trackerUrl + "/chunk",
                 json=hashes
             )
+            #                                 "client_host": x["client"].host,
+            #                                 "client_port": x["client"].port,
+            #                                 "hash_list": x["hashes"]
             response.raise_for_status()
             tracker_providers = response.json()
-            providers.extend(tracker_providers)
+            for provider in tracker_providers:
+                host, port = provider.split(":")
+                provider = Provider()
+                provider.client_host = host
+                provider.client_port = int(port)
+                provider.hashes = hashes
         except Exception as e:
             print(f"Error getting providers from tracker: {e}")
-
-        # Get providers from DHT if enabled
-        if self.dht_enabled and self.dht_server:
-            for hash in hashes:
-                try:
-                    result = await self.dht_server.get(hash)
-                    if result:
-                        dht_providers = json.loads(result)
-                        for provider in dht_providers:
-                            host, port = provider.split(":")
-                            providers.append({
-                                "client_host": host,
-                                "client_port": int(port),
-                                "hashes": [hash]
-                            })
-                except Exception as e:
-                    print(f"Error getting providers from DHT for hash {hash}: {e}")
+            # Get providers from DHT if enabled
+            if self.dht_enabled and self.dht_server:
+                print("Getting providers from DHT network...")
+                for hash in hashes:
+                    try:
+                        result = await self.dht_server.get(hash)
+                        if result:
+                            dht_providers = json.loads(result)
+                            for provider in dht_providers:
+                                host, port = provider.split(":")
+                                provider = Provider()
+                                provider.client_host = host
+                                provider.client_port = int(port)
+                                provider.hashes = [hash]
+                                providers.append(provider)
+                    except Exception as e:
+                        print(f"Error getting providers from DHT for hash {hash}: {e}")
 
         return providers
 
@@ -270,7 +284,7 @@ class Client:
         """Get DHT peers from the tracker"""
         try:
             response = requests.get(
-                "http://" + self.torrent_file_details.trackerUrl + "/dht-peers"
+                "http://" + self.torrent_file_details.trackerUrl + "/dht"
             )
             response.raise_for_status()
             peers = response.json()
@@ -283,7 +297,7 @@ class Client:
         """Announce DHT status to tracker"""
         try:
             response = requests.post(
-                "http://" + self.torrent_file_details.trackerUrl + "/dht-peer",
+                "http://" + self.torrent_file_details.trackerUrl + "/dht",
                 json={
                     "host": self.host,
                     "port": self.dht_port
@@ -326,9 +340,9 @@ class Client:
 
     def download_from_provider(self, provider: Provider) -> None:
         """Download chunks from a provider"""
-        print(f"Downloading {len(provider.hashes)} chunks from provider at {provider.client_host}:{provider.client_port}.")
-
         try:
+            print(f"Downloading {len(provider.hashes)} chunks from provider at {provider.client_host}:{provider.client_port}.")
+
             response = requests.post(
                 f"http://{provider.client_host}:{provider.client_port}/chunk",
                 json=provider.hashes
@@ -343,19 +357,25 @@ class Client:
         except Exception as e:
             print(f"Error downloading chunks from provider: {e}")
 
-# Example usage
 async def main():
-    # Example torrent details
-    torrent_details = TorrentDetails(
-        fileName="example.txt",
-        chunkSize=1024,
-        trackerUrl="localhost:8080",
-        fileHash="example_hash",
-        chunks=[]
-    )
+    with open("torrent.json", "r") as f:
+        torrent_data = json.load(f)
+
+        torrent_details = TorrentDetails()
+        torrent_details.fileName = torrent_data["fileName"]
+        torrent_details.chunkSize = torrent_data["chunkSize"]
+        torrent_details.trackerUrl = torrent_data["trackerUrl"]
+        torrent_details.fileHash = torrent_data["fileHash"]
+        torrent_details.chunks = [FileChunk() for _ in range(len(torrent_data["chunks"]))]
+        for i, chunk in enumerate(torrent_data["chunks"]):
+            torrent_details.chunks[i].orderNumber = chunk["orderNumber"]
+            torrent_details.chunks[i].hash = chunk["hash"]
 
     # Create and start client
-    client = Client(torrent_details, dht_enabled=True)
+    args = sys.argv
+    has_file = "has_file" in args
+    dht_enabled = "dht_enabled" in args
+    client = Client(torrent_details, dht_enabled=dht_enabled, has_file=has_file)
     try:
         await client.start()
     except KeyboardInterrupt:
