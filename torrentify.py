@@ -18,7 +18,10 @@ class Chunk:
     def __repr__(self):
         return f"Chunk: {self.orderNumber} Content: ${self.content} Digest: {self.hash}"
 
-def get_appropriate_chunk_size(file_path, min_chunks=100, max_chunks=1000, min_size=16384, max_size=4194304):
+
+def get_appropriate_chunk_size(
+    file_path, min_chunks=100, max_chunks=1000, min_size=16384, max_size=4194304
+):
     """
     Determines an appropriate chunk size for a file based on its size.
 
@@ -84,6 +87,7 @@ if __name__ == "__main__":
     tracker_url = sys.argv[2]
     chunk_size = get_appropriate_chunk_size(filename)
     file_hash = sha1()
+    file_size = os.path.getsize(filename)
 
     chunks = []
     with open("torrent.json", "w") as f:
@@ -96,6 +100,7 @@ if __name__ == "__main__":
                 "chunkSize": chunk_size,
                 "trackerUrl": tracker_url,
                 "fileHash": file_hash.digest().hex(),
+                "fileSize": file_size,
                 "chunks": chunks,
             },
             f,
@@ -103,4 +108,4 @@ if __name__ == "__main__":
         )
 
     print(len(chunks))
-    print(file_hash.digest().hex())
+    print(file_hash.hexdigest())

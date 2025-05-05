@@ -52,12 +52,12 @@ class Tracker:
                 if parsed_url.path == "/dht":
                     # message is in json form [ {host: host, port: port}, ...]
                     try:
-                        content = json.dumps([
-                            {
-                                "host": x.host,
-                                "port": x.port
-                            } for x in tracker.dht_registry
-                        ])
+                        content = json.dumps(
+                            [
+                                {"host": x.host, "port": x.port}
+                                for x in tracker.dht_registry
+                            ]
+                        )
                         status = 200
                     except Exception as e:
                         print("Could not parse dht request", e)
@@ -66,7 +66,8 @@ class Tracker:
 
                 # SENDING
                 self.send_response(status)
-                for header in headers: self.send_header(header[0], header[1])
+                for header in headers:
+                    self.send_header(header[0], header[1])
                 self.end_headers()
                 self.wfile.write(content.encode("UTF-8"))
 
@@ -76,7 +77,9 @@ class Tracker:
                 content: str = "404 Not Found."
                 status: int = 404
                 headers: list[tuple[str, str]] = []
-                request_body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+                request_body = self.rfile.read(
+                    int(self.headers.get("Content-Length", 0))
+                )
 
                 # ROUTES
                 if parsed_url.path == "/chunk":
@@ -86,8 +89,11 @@ class Tracker:
 
                         response = []
                         for h in hashes:
-                            if h not in tracker.chunk_client_registry: raise Exception(f"Chunk ({h}) is not tracked by the tracker")
-                        
+                            if h not in tracker.chunk_client_registry:
+                                raise Exception(
+                                    f"Chunk ({h}) is not tracked by the tracker"
+                                )
+
                             clients = tracker.chunk_client_registry.get(h)
                             shuffle(clients)
                             if len(clients) <= 0:
@@ -96,7 +102,10 @@ class Tracker:
                             # check if already found client can handle the hash also (less strain on the network)
                             added = False
                             for r in response:
-                                if r["client"] in clients and len(r["hashes"]) <= max_hashes_per_client:
+                                if (
+                                    r["client"] in clients
+                                    and len(r["hashes"]) <= max_hashes_per_client
+                                ):
                                     r["hashes"].append(h)
                                     added = True
                                     break
@@ -104,13 +113,16 @@ class Tracker:
                             if not added:
                                 response.append({"client": clients[0], "hashes": [h]})
 
-                        content = json.dumps([
-                            {
-                                "client_host": x["client"].host,
-                                "client_port": x["client"].port,
-                                "hash_list": x["hashes"]
-                            } for x in response
-                        ])
+                        content = json.dumps(
+                            [
+                                {
+                                    "client_host": x["client"].host,
+                                    "client_port": x["client"].port,
+                                    "hash_list": x["hashes"],
+                                }
+                                for x in response
+                            ]
+                        )
                         status = 200
 
                     except Exception as e:
@@ -137,7 +149,8 @@ class Tracker:
 
                 # SENDING
                 self.send_response(status)
-                for header in headers: self.send_header(header[0], header[1])
+                for header in headers:
+                    self.send_header(header[0], header[1])
                 self.end_headers()
                 self.wfile.write(content.encode("UTF-8"))
 
@@ -146,13 +159,15 @@ class Tracker:
                 content: str = "404 Not Found."
                 status: int = 404
                 headers: list[tuple[str, str]] = []
-                request_body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+                request_body = self.rfile.read(
+                    int(self.headers.get("Content-Length", 0))
+                )
 
                 # ROUTES
                 if parsed_url.path == "/chunk":
                     try:
                         j = json.loads(request_body)
-                                        
+
                         hashes = j["hashes"]
                         client = Client()
                         client.host = j["client_host"]
@@ -174,10 +189,10 @@ class Tracker:
 
                 # SENDING
                 self.send_response(status)
-                for header in headers: self.send_header(header[0], header[1])
+                for header in headers:
+                    self.send_header(header[0], header[1])
                 self.end_headers()
                 self.wfile.write(content.encode("UTF-8"))
-
 
         server = HTTPServer((self.host, self.port), Handler)
         server.serve_forever()
@@ -194,12 +209,18 @@ class Tracker:
                     response = requests.get(f"http://{client.host}:{client.port}/ping")
                     response.raise_for_status()
                 except Exception as e:
-                    print(f"Client {client.host}:{client.port} is not reachable [reason {e}]. Removing.")
+                    print(
+                        f"Client {client.host}:{client.port} is not reachable [reason {e}]. Removing."
+                    )
                     for hashes in self.chunk_client_registry.values():
                         if client in hashes:
                             hashes.remove(client)
             time.sleep(5)
 
+
 if __name__ == "__main__":
-    port = 5000
+    port = int(sys.argv[1])
+
+    if not port:
+        port = 5000
     Tracker(port, serve_forever=True)
