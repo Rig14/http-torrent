@@ -10,6 +10,8 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from random import shuffle
 from threading import Thread
 from uuid import uuid4
+from hashlib import sha1
+from dataclasses import dataclass
 import urllib.parse as urlparse
 import requests
 
@@ -17,21 +19,34 @@ from dht import KademliaDHT
 from torrentify import chunkify
 from util import get_ip, find_free_port
 
+
 class FileChunk:
     orderNumber: int
     hash: str
+
+
+@dataclass
+class DataChunk:
+    offset: int
+    hash: str
+
 
 class Provider:
     client_host: str
     client_port: int
     hashes: list[str]
 
+
 class TorrentDetails:
-    fileName: str
-    chunkSize: int
-    trackerUrl: str
-    fileHash: str
+    file_name: str
+    chunk_size: int
+    tracker_url: str
+    file_hash: str
     chunks: list[FileChunk]
+    chunk_hash_id_map: dict[str, str] = {}
+
+    def __init__(self):
+        self.chunk_hash_id_map: dict[str, str] = {}
 
 class Client:
     def __init__(self, torrent_file_details: TorrentDetails, has_file=False, dht_enabled=False):
@@ -44,6 +59,22 @@ class Client:
         self.dht_server: KademliaDHT | None = None
         self.uploaded_chunks: int = 0
         self.tracker_status_up = True
+
+        self.ready_file_name: str
+        self.current_dir = os.getcwd()
+
+        self.temp_file_name = os.path.join(
+            self.current_dir, f"{torrent_file_details.file_name}.tmp"
+        )
+
+        self.download_metadata_file_name = os.path.join(
+            self.current_dir, f"{torrent_file_details.file_name}.metadata.txt"
+        )
+
+        self.ready_file_name = os.path.join(
+            self.current_dir, self.torrent_file_details.file_name
+        )
+
         self.id: str = uuid4().hex
         self.temp_path: str = f"/tmp/http-torrent/{self.id}"
         self._running = False
@@ -51,16 +82,6 @@ class Client:
         self._http_thread = None
 
         os.makedirs(self.temp_path, exist_ok=True)
-
-        try:
-            if not has_file: raise FileNotFoundError
-            chunks = chunkify(self.torrent_file_details.fileName, self.torrent_file_details.chunkSize)
-            for chunk in chunks:
-                with open(f"{self.temp_path}/{chunk.hash}", "wb") as f:
-                    f.write(chunk.content)
-                self.available_chunks.append(chunk.hash)
-        except FileNotFoundError:
-            print(f"Torrent file {self.torrent_file_details.fileName} not found on system. Continuing...")
 
     async def start(self):
         """Start the client and all its components"""
@@ -80,10 +101,16 @@ class Client:
 
         # Start main loop
         await self.main_loop()
-
+        
+        
     async def _initialize_dht(self):
         """Initialize and bootstrap the DHT network"""
         print("Initializing DHT server...")
+        
+        if not self.dht_port: 
+            print("DHT not activated")
+            return
+        
         self.dht_server = KademliaDHT(self.dht_port)
         await self.dht_server.start()
         
@@ -121,19 +148,12 @@ class Client:
                         if not all([isinstance(x, str) for x in j]): raise Exception("Invalid request body")
                         if not all([x in client_class.available_chunks for x in j]):
                             raise Exception("Invalid request. I dont have your chunks :(")
+                        file_hash = sha1()
+                        # TODO: file logic here
 
-                        chunks = []
-                        for chunk_hash in j:
-                            with open(f"{client_class.temp_path}/{chunk_hash}", "rb") as f:
-                                file_content = f.read()
-                                chunks.append({
-                                    "hash": chunk_hash,
-                                    "content": base64.b64encode(file_content).decode('ascii')
-                                })
-
-                        content = json.dumps(chunks)
-                        status = 200
-                        client_class.uploaded_chunks += len(chunks)
+                        # content = json.dumps(chunks)
+                        # status = 200
+                        # client_class.uploaded_chunks += len(chunks)
                     except Exception as e:
                         content = f"400 Bad Request: {e}"
                         print("Error parsing request body", e)
@@ -205,7 +225,7 @@ class Client:
 
     async def announce_hashes(self, hashes: list[str]) -> None:
         """Announce available hashes to both tracker and DHT network"""
-        print(f"Announcing {len(hashes)} hashes to tracker at {self.torrent_file_details.trackerUrl}.")
+        print(f"Announcing {len(hashes)} hashes to tracker at {self.torrent_file_details.tracker_url}.")
 
         # Announce to tracker
         payload = {
@@ -213,10 +233,10 @@ class Client:
             "client_port": self.port,
             "hashes": hashes
         }
-
+    
         try:
             response = requests.put(
-                "http://" + self.torrent_file_details.trackerUrl + "/chunk",
+                "http://" + self.torrent_file_details.tracker_url + "/chunk",
                 json=payload
             )
             response.raise_for_status()
@@ -238,6 +258,7 @@ class Client:
                 except Exception as e:
                     print(f"Error announcing hash {hash} to DHT: {e}")
 
+
     async def get_providers_for_hashes(self, hashes: list[str]) -> list[Provider]:
         """Get providers for the requested hashes from both tracker and DHT"""
         providers = []
@@ -245,7 +266,7 @@ class Client:
         # Get providers from tracker
         try:
             response = requests.post(
-                "http://" + self.torrent_file_details.trackerUrl + "/chunk",
+                "http://" + self.torrent_file_details.tracker_url + "/chunk",
                 json=hashes
             )
             #                                 "client_host": x["client"].host,
@@ -300,7 +321,7 @@ class Client:
         """Get DHT peers from the tracker"""
         try:
             response = requests.get(
-                "http://" + self.torrent_file_details.trackerUrl + "/dht"
+                "http://" + self.torrent_file_details.tracker_url + "/dht"
             )
             response.raise_for_status()
             peers = response.json()
@@ -313,7 +334,7 @@ class Client:
         """Announce DHT status to tracker"""
         try:
             response = requests.post(
-                "http://" + self.torrent_file_details.trackerUrl + "/dht",
+                "http://" + self.torrent_file_details.tracker_url + "/dht",
                 json={
                     "host": self.host,
                     "port": self.dht_port
@@ -333,7 +354,7 @@ class Client:
                     "downloaded_chunks": len(self.available_chunks),
                     "uploaded_chunks": self.uploaded_chunks,
                     "total_chunks": len(self.torrent_file_details.chunks),
-                    "chunk_size": self.torrent_file_details.chunkSize,
+                    "chunk_size": self.torrent_file_details.chunk_size,
                     "dht_peers": self.dht_server.get_peer_count() if self.dht_enabled else 0,
                     "dht_enabled": self.dht_enabled,
                     "tracker_status_up": self.tracker_status_up
@@ -364,13 +385,24 @@ class Client:
 
             response = requests.post(
                 f"http://{provider.client_host}:{provider.client_port}/chunk",
-                json=provider.hashes
+                json=provider.hashes,
             )
+
             response.raise_for_status()
 
             for chunk in response.json():
-                with open(f"{self.temp_path}/{chunk['hash']}", "wb") as f:
-                    f.write(base64.b64decode(chunk["content"]))
+                sent_chunk_hash = sha1(chunk).hexdigest()
+
+                # if sent_chunk_hash == chunk_hash:
+                order_number = int(self.torrent_file_details.chunk_hash_id_map[sent_chunk_hash])
+                offset = order_number * self.torrent_file_details.chunk_size
+                data_chunk = DataChunk(offset, sent_chunk_hash)
+
+                self.write_chunk_content_to_disk(data_chunk, chunk["content"])
+                self.register_chunk_to_memory(chunk)
+
+                # with open(f"{self.temp_path}/{chunk['hash']}", "wb") as f:
+                #     f.write(base64.b64decode(chunk["content"]))
                 self.available_chunks.append(chunk["hash"])
 
         except Exception as e:
@@ -388,21 +420,41 @@ class Client:
                         await self.dht_server.set(hash, json.dumps(dht_providers))
                     except Exception as e:
                         print(f"Error removing provider from DHT for hash {hash}: {e}")
+    def register_chunk_to_memory(self, chunk: DataChunk):
+        if chunk.hash in self.get_missing_chunk_hashes():
+            self.available_chunks.append(chunk.hash)
+
+    def write_chunk_content_to_disk(self, chunk: DataChunk, content: bytes):
+        with open(self.temp_file_name, "r+b") as f:
+            # set file cursor location to its offset
+            f.seek(chunk.offset)
+            # check if chunk exists at offset
+            data = f.read(self.torrent_file_details.chunk_size)
+
+            # reading moved the cursor, reset it before writing
+            f.seek(chunk.offset)
+
+            if all(byte == 0 for byte in data):
+                written = f.write(content)
+                print(f"{written} bytes written to offset {chunk.offset}")
+
+                with open(self.download_metadata_file_name, "a") as mf:
+                    mf.write(f"{self.temp_file_name}:{chunk.offset}:{chunk.hash}\n")
 
 async def main():
     with open("torrent.json", "r") as f:
         torrent_data = json.load(f)
 
         torrent_details = TorrentDetails()
-        torrent_details.fileName = torrent_data["fileName"]
-        torrent_details.chunkSize = torrent_data["chunkSize"]
-        torrent_details.trackerUrl = torrent_data["trackerUrl"]
-        torrent_details.fileHash = torrent_data["fileHash"]
+        torrent_details.file_name = torrent_data["fileName"]
+        torrent_details.chunk_size = torrent_data["chunkSize"]
+        torrent_details.tracker_url = torrent_data["trackerUrl"]
+        torrent_details.file_hash = torrent_data["fileHash"]
         torrent_details.chunks = [FileChunk() for _ in range(len(torrent_data["chunks"]))]
         for i, chunk in enumerate(torrent_data["chunks"]):
-            torrent_details.chunks[i].orderNumber = chunk["orderNumber"]
-            torrent_details.chunks[i].hash = chunk["hash"]
-
+                # SENDING
+                torrent_details.chunk_hash_id_map[chunk["hash"]] = chunk["orderNumber"]
+                            
     # Create and start client
     args = sys.argv
     has_file = "has_file" in args
@@ -414,12 +466,7 @@ async def main():
         print("Shutting down client...")
         await client.stop()
 
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     asyncio.run(main())
-
-
-
-
-
-
