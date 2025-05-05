@@ -7,10 +7,13 @@ graphyte==1.7.1
 idna==3.10
 itsdangerous==2.2.0
 Jinja2==3.1.6
+kademlia==2.2.3
 MarkupSafe==3.0.2
 pytelegraf==0.3.3
 python-dotenv==1.0.1
 requests==2.32.3
 requests-futures==0.9.7
+rpcudp==5.0.1
+u-msgpack-python==2.8.0
 urllib3==2.3.0
 Werkzeug==3.1.3

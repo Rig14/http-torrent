@@ -1,4 +1,5 @@
 import time
+from threading import Thread
 
 from flask import Flask, render_template, request, jsonify
 
@@ -19,6 +20,9 @@ class ClientMetrics:
     uploaded_chunks: int
     total_chunks: int
     chunk_size: int
+    dht_peers: int
+    dht_enabled: bool
+    tracker_status_up: bool
 
 
 metrics: dict[Client, ClientMetrics] = {}
@@ -36,17 +40,25 @@ def get_metrics():
             "downloaded_chunks": 10,
             "uploaded_chunks": 20,
             "total_chunks": 100,
-            "chunk_size": 128
+            "chunk_size": 128,
+            "dht_peers": 10,
+            "dht_enabled": true,
+            "tracker_status_up": true
         },
         ...
     ]
     """
+    update_clients()
+
     return jsonify([{
         "client": f"{client.client_host}:{client.client_port}",
         "downloaded_chunks": metrics[client].downloaded_chunks,
         "uploaded_chunks": metrics[client].uploaded_chunks,
         "total_chunks": metrics[client].total_chunks,
-        "chunk_size": metrics[client].chunk_size
+        "chunk_size": metrics[client].chunk_size,
+        "dht_peers": metrics[client].dht_peers,
+        "dht_enabled": metrics[client].dht_enabled,
+        "tracker_status_up": metrics[client].tracker_status_up
     } for client in metrics])
 
 ######################
@@ -62,7 +74,9 @@ def post_metrics():
         "downloaded_chunks": 10,
         "uploaded_chunks": 20,
         "total_chunks": 100,
-        "chunk_size": 128
+        "chunk_size": 128,
+        "dht_peers": 10
+        "dht_enabled": true
     }
     """
     j = request.get_json()
@@ -78,15 +92,20 @@ def post_metrics():
     metrics[client].uploaded_chunks = j["uploaded_chunks"]
     metrics[client].total_chunks = j["total_chunks"]
     metrics[client].chunk_size = j["chunk_size"]
+    metrics[client].dht_peers = j["dht_peers"]
+    metrics[client].dht_enabled = j["dht_enabled"]
+    metrics[client].tracker_status_up = j["tracker_status_up"]
 
     last_updated[client] = time.time()
 
+    return "Ok"
+
+
+def update_clients():
     for k, v in last_updated.items():
         if time.time() - v > 15:
             del metrics[k]
             del last_updated[k]
-
-    return "Ok"
 
 if __name__ == "__main__":
     app.run(port=8080)

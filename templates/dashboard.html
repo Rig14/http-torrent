@@ -4,167 +4,33 @@
     <meta charset="UTF-8">
     <meta content="width=device-width, initial-scale=1.0" name="viewport">
     <title>Torrent Client Dashboard</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 15px;
-            background-color: #f0f0f0;
-            font-size: 14px;
-        }
-
-        h1 {
-            text-align: center;
-            color: #333;
-            margin-bottom: 15px;
-            font-size: 1.5rem;
-        }
-
-        .controls {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-            font-size: 0.9rem;
-        }
-
-        .refresh-rate {
-            display: flex;
-            align-items: center;
-        }
-
-        .refresh-rate label {
-            margin-right: 10px;
-        }
-
-        .status {
-            color: #666;
-        }
-
-        .clients-container {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-            gap: 12px;
-        }
-
-        .client-card {
-            background-color: white;
-            border-radius: 4px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            padding: 12px;
-            transition: transform 0.2s;
-        }
-
-        .client-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 3px 6px rgba(0,0,0,0.1);
-        }
-
-        .client-id {
-            font-weight: bold;
-            margin-bottom: 8px;
-            color: #333;
-            word-break: break-all;
-            font-size: 0.9rem;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .progress-container {
-            margin-bottom: 8px;
-        }
-
-        .progress-label {
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.8rem;
-            margin-bottom: 2px;
-        }
-
-        .progress-bar {
-            height: 8px;
-            background-color: #e0e0e0;
-            border-radius: 4px;
-            overflow: hidden;
-        }
-
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #4caf50, #8bc34a);
-            border-radius: 4px;
-            transition: width 0.5s ease-in-out;
-        }
-
-        .stats {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 6px;
-            font-size: 0.8rem;
-        }
-
-        .stat-item {
-            padding: 4px;
-            background-color: #f5f5f5;
-            border-radius: 3px;
-            text-align: center;
-        }
-
-        .stat-value {
-            font-weight: bold;
-            color: #2196f3;
-        }
-
-        .stat-label {
-            font-size: 0.7rem;
-            color: #666;
-        }
-
-        .no-clients {
-            text-align: center;
-            padding: 20px;
-            color: #666;
-            grid-column: 1 / -1;
-        }
-
-        @media (max-width: 600px) {
-            .controls {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 8px;
-            }
-
-            .clients-container {
-                grid-template-columns: repeat(auto-fill, minmax(100%, 1fr));
-            }
-        }
-    </style>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-<h1>Torrent Client Dashboard</h1>
+<body class="bg-gray-100 p-4 font-sans text-sm">
+<h1 class="text-center text-xl font-bold text-gray-800 mb-4">Torrent Client Dashboard</h1>
 
-<div class="controls">
-    <div class="refresh-rate">
-        <label for="refresh-interval">Refresh:</label>
-        <select id="refresh-interval">
+<div class="flex justify-between items-center mb-4 text-sm">
+    <div class="flex items-center">
+        <label class="mr-2" for="refresh-interval">Refresh:</label>
+        <select class="border rounded px-2 py-1 bg-white" id="refresh-interval">
             <option value="3000">3s</option>
             <option selected value="5000">5s</option>
             <option value="10000">10s</option>
             <option value="30000">30s</option>
         </select>
     </div>
-    <div class="status">Last updated: Never</div>
+    <div class="text-gray-500" id="status">Last updated: Never</div>
 </div>
 
-<div class="clients-container" id="clients-container">
-    <div class="no-clients">Loading client data...</div>
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3" id="clients-container">
+    <div class="text-center p-5 text-gray-500 col-span-full">Loading client data...</div>
 </div>
 
 <script>
     // DOM elements
     const clientsContainer = document.getElementById('clients-container');
     const refreshIntervalSelect = document.getElementById('refresh-interval');
-    const statusElement = document.querySelector('.status');
+    const statusElement = document.getElementById('status');
 
     // State
     let clients = [];
@@ -227,7 +93,7 @@
 
     function renderClients() {
         if (!clients.length) {
-            clientsContainer.innerHTML = '<div class="no-clients">No clients found</div>';
+            clientsContainer.innerHTML = '<div class="text-center p-5 text-gray-500 col-span-full">No clients found</div>';
             return;
         }
 
@@ -244,45 +110,78 @@
             const totalSize = client.total_chunks * chunkSize;
 
             const clientCard = document.createElement('div');
-            clientCard.className = 'client-card';
+            clientCard.className = 'bg-white rounded shadow p-3 hover:shadow-md transition-transform duration-200 hover:-translate-y-1';
+
+            let statusIndicators = '';
+
+            // DHT Indicator
+            if (client.dht_enabled) {
+                statusIndicators += `
+                    <span class="inline-flex items-center bg-green-100 text-green-800 text-xs font-medium px-2 py-1 rounded-full mr-1">
+                        <span class="w-2 h-2 bg-green-500 rounded-full mr-1"></span>
+                        DHT: ${client.dht_peers}
+                    </span>
+                `;
+            }
+
+            // Tracker Status Indicator
+            const trackerStatusColor = client.tracker_status_up ? 'green' : 'red';
+            const trackerStatusText = client.tracker_status_up ? 'Online' : 'Offline';
+            statusIndicators += `
+                <span class="inline-flex items-center bg-${trackerStatusColor}-100 text-${trackerStatusColor}-800 text-xs font-medium px-2 py-1 rounded-full">
+                    <span class="w-2 h-2 bg-${trackerStatusColor}-500 rounded-full mr-1"></span>
+                    Tracker: ${trackerStatusText}
+                </span>
+            `;
 
             clientCard.innerHTML = `
-                    <div class="client-id" title="${client.client}">${client.client}</div>
+                    <div class="relative">
+                        <div class="font-bold mb-2 text-gray-800 truncate" title="${client.client}">${client.client}</div>
 
-                    <div class="progress-container">
-                        <div class="progress-label">
-                            <span>Download</span>
-                            <span>${downloadComplete ? 'Complete' : Math.round(downloadProgress) + '%'}</span>
+                        <div class="absolute top-3 right-3 flex items-center flex-wrap gap-1">
+                            ${statusIndicators}
                         </div>
-                        <div class="progress-bar">
-                            <div class="progress-fill" style="width: ${downloadProgress}%"></div>
-                        </div>
-                    </div>
 
-                    <div class="stats">
-                        <div class="stat-item">
-                            <div class="stat-value">${formatSize(downloadedSize)}</div>
-                            <div class="stat-label">Downloaded</div>
+                        <div class="text-xs text-gray-600 mb-1">
+                            ${client.client}
                         </div>
-                        <div class="stat-item">
-                            <div class="stat-value">${formatSize(uploadedSize)}</div>
-                            <div class="stat-label">Uploaded</div>
+
+                        <div class="mb-2">
+                            <div class="flex justify-between text-xs mb-1">
+                                <span>Download</span>
+                                <span>${downloadComplete ? 'Complete' : Math.round(downloadProgress) + '%'}</span>
+                            </div>
+                            <div class="h-2 bg-gray-200 rounded overflow-hidden">
+                                <div class="h-full bg-gradient-to-r from-green-500 to-green-300 rounded"
+                                     style="width: ${downloadProgress}%"></div>
+                            </div>
                         </div>
-                        <div class="stat-item">
-                            <div class="stat-value">${formatSize(totalSize)}</div>
-                            <div class="stat-label">Total Size</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-value">${(client.uploaded_chunks / Math.max(1, client.downloaded_chunks)).toFixed(2)}</div>
-                            <div class="stat-label">Ratio</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-value">${client.downloaded_chunks}</div>
-                            <div class="stat-label">Chunks Down</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-value">${client.uploaded_chunks}</div>
-                            <div class="stat-label">Chunks Up</div>
+
+                        <div class="grid grid-cols-2 gap-1.5 text-xs">
+                            <div class="bg-gray-50 rounded p-1 text-center">
+                                <div class="font-bold text-blue-600">${formatSize(downloadedSize)}</div>
+                                <div class="text-gray-500 text-xs">Downloaded</div>
+                            </div>
+                            <div class="bg-gray-50 rounded p-1 text-center">
+                                <div class="font-bold text-blue-600">${formatSize(uploadedSize)}</div>
+                                <div class="text-gray-500 text-xs">Uploaded</div>
+                            </div>
+                            <div class="bg-gray-50 rounded p-1 text-center">
+                                <div class="font-bold text-blue-600">${formatSize(totalSize)}</div>
+                                <div class="text-gray-500 text-xs">Total Size</div>
+                            </div>
+                            <div class="bg-gray-50 rounded p-1 text-center">
+                                <div class="font-bold text-blue-600">${(client.uploaded_chunks / Math.max(1, client.downloaded_chunks)).toFixed(2)}</div>
+                                <div class="text-gray-500 text-xs">Ratio</div>
+                            </div>
+                            <div class="bg-gray-50 rounded p-1 text-center">
+                                <div class="font-bold text-blue-600">${client.downloaded_chunks}</div>
+                                <div class="text-gray-500 text-xs">Chunks Down</div>
+                            </div>
+                            <div class="bg-gray-50 rounded p-1 text-center">
+                                <div class="font-bold text-blue-600">${client.uploaded_chunks}</div>
+                                <div class="text-gray-500 text-xs">Chunks Up</div>
+                            </div>
                         </div>
                     </div>
                 `;
