@@ -48,7 +48,7 @@ class TorrentDetails:
 
 class Client:
     def __init__(
-        self, torrent_file_details: TorrentDetails, has_file=False, dht_enabled=False
+        self, torrent_file_details: TorrentDetails, dht_enabled=False
     ):
         self.host: str = get_ip()
         self.port: int = find_free_port()
@@ -413,7 +413,7 @@ class Client:
                     "dht_enabled": self.dht_enabled,
                     "tracker_status_up": self.tracker_status_up,
                 }
-                requests.post("http://localhost:5000/metrics", json=payload)
+                requests.post("http://localhost:8080/metrics", json=payload)
             except Exception as e:
                 print(f"Error sending metrics: {e}")
             time.sleep(3)
@@ -536,7 +536,9 @@ class Client:
 
 
 async def main():
-    torrent_file_name = sys.argv[1]
+    args = sys.argv
+    dht_enabled = "dht_enabled" in args
+    torrent_file_name = args[1]
     with open(torrent_file_name, "r") as f:
         torrent_data = json.load(f)
 
@@ -552,11 +554,7 @@ async def main():
             torrent_details.chunk_hash_id_map[chunk["hash"]] = chunk["orderNumber"]
             torrent_details.chunk_hashes.append(chunk["hash"])
 
-    # Create and start client
-    args = sys.argv
-    has_file = "has_file" in args
-    dht_enabled = "dht_enabled" in args
-    client = Client(torrent_details, dht_enabled=dht_enabled, has_file=has_file)
+    client = Client(torrent_details, dht_enabled=dht_enabled)
     try:
         await client.start()
     except KeyboardInterrupt:
