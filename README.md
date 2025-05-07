@@ -213,7 +213,15 @@ Metrics are sent to the server every 3 seconds and displayed in a real-time dash
 pip install -r requirements.txt
 ```
 
-### 2. Generate a Torrent File
+### 2. Start the Tracker
+
+```bash
+python tracker.py [port_number]
+```
+
+Default port is 5000 if not specified.
+
+### 3. Generate a Torrent File
 
 ```bash
 python torrentify.py <your_file> <tracker_ip:port>
@@ -225,14 +233,7 @@ python torrentify.py example.mp4 localhost:5000
 ```
 
 This generates a `torrent.json` file containing metadata about the file chunks.
-
-### 3. Start the Tracker
-
-```bash
-python tracker.py [port_number]
-```
-
-Default port is 5000 if not specified.
+Use the tracker information that is output from the previous command.
 
 ### 4. Start the Metrics Server
 
@@ -254,7 +255,7 @@ To start a client without the source file (leecher):
 python client.py [dht_enabled]
 ```
 
-Add the `dht_enabled` parameter to enable DHT functionality.
+Add the `dht_enabled` parameter to enable DHT functionality incase when tracker is down.
 
 ### 6. Run a Stress Test
 
